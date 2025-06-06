@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Package, Grid3x3, Search, Bell, User, TrendingUp, Clock, Activity, Box, Camera, Maximize2 } from 'lucide-react';
+import { Package, Grid3x3, Search, Bell, User, TrendingUp, Clock, Activity, Box, Camera } from 'lucide-react';
+import CameraFeed from './components/CameraFeed';
+import CameraModal from './components/CameraModal';
 
 // Types
 interface Pallet {
@@ -209,46 +211,7 @@ const GridCell: React.FC<GridCellProps> = ({ cell, pallet, onSelect, selected, s
   );
 };
 
-// Camera Feed Component
-interface CameraFeedProps {
-  cameraId: number;
-  onExpand: (cameraId: number) => void;
-  palletCount: number;
-}
 
-const CameraFeed: React.FC<CameraFeedProps> = ({ cameraId, onExpand, palletCount }) => {
-  const cameraColors: Record<number, string> = {
-    1: 'border-purple-600',
-    2: 'border-blue-600',
-    3: 'border-green-600',
-    4: 'border-amber-600'
-  };
-  
-  return (
-    <div className={`bg-gray-800 rounded-lg border-2 ${cameraColors[cameraId]} overflow-hidden`}>
-      <div className="p-2 bg-gray-900 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Camera className="w-4 h-4 text-gray-400" />
-          <span className="text-sm font-medium">Camera {cameraId}</span>
-          <span className="text-xs text-gray-500">({palletCount} pallets)</span>
-        </div>
-        <button
-          onClick={() => onExpand(cameraId)}
-          className="p-1 hover:bg-gray-700 rounded transition-colors"
-        >
-          <Maximize2 className="w-4 h-4 text-gray-400" />
-        </button>
-      </div>
-      <div className="p-4 h-32 flex items-center justify-center bg-gray-900/50">
-        <div className="text-center">
-          <Camera className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-          <p className="text-xs text-gray-500">Live Feed</p>
-          <p className="text-xs text-gray-600">Zone {cameraId}</p>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // Activity Item Component
 interface ActivityItemProps {
@@ -495,6 +458,15 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Camera Modal */}
+      {expandedCamera && (
+        <CameraModal
+          cameraId={expandedCamera}
+          isOpen={expandedCamera !== null}
+          onClose={() => setExpandedCamera(null)}
+        />
+      )}
     </div>
   );
 }
