@@ -39,14 +39,14 @@ const getCameraZone = (row: string, col: number): number => {
   // Convert column to index (0-31)
   const colIndex = col - 1;
 
-  // Zone 1: Top-left (rows A-F, columns 1-6)
-  if (rowIndex < 6 && colIndex < 6) return 1;
-  // Zone 2: Top-right (rows A-F, columns 7-12)
-  if (rowIndex < 6 && colIndex >= 6 && colIndex < 12) return 2;
-  // Zone 3: Bottom-left (rows G-L, columns 1-6)
-  if (rowIndex >= 6 && rowIndex < 12 && colIndex < 6) return 3;
-  // Zone 4: Bottom-right (rows G-L, columns 7-12)
-  if (rowIndex >= 6 && rowIndex < 12 && colIndex >= 6 && colIndex < 12) return 4;
+  // Zone 1: Top-left (rows A-G, columns 1-10)
+  if (rowIndex < 7 && colIndex < 10) return 1;
+  // Zone 2: Top-right (rows A-G, columns 11-20)
+  if (rowIndex < 7 && colIndex >= 10 && colIndex < 20) return 2;
+  // Zone 3: Bottom-left (rows H-N, columns 1-10)
+  if (rowIndex >= 7 && rowIndex < 14 && colIndex < 10) return 3;
+  // Zone 4: Bottom-right (rows H-N, columns 11-20)
+  if (rowIndex >= 7 && rowIndex < 14 && colIndex >= 10 && colIndex < 20) return 4;
 
   return 1; // Default fallback
 };
@@ -56,30 +56,30 @@ const generateDummyPallets = (): Pallet[] => {
   // Generate all possible locations for each zone
   const allLocations: string[] = [];
 
-  // Zone 1: A-F, 1-6
-  for (let row of ['A', 'B', 'C', 'D', 'E', 'F']) {
-    for (let col = 1; col <= 6; col++) {
+  // Zone 1: A-G, 1-10
+  for (let row of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
+    for (let col = 1; col <= 10; col++) {
       allLocations.push(`${row}${col}`);
     }
   }
 
-  // Zone 2: A-F, 7-12
-  for (let row of ['A', 'B', 'C', 'D', 'E', 'F']) {
-    for (let col = 7; col <= 12; col++) {
+  // Zone 2: A-G, 11-20
+  for (let row of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
+    for (let col = 11; col <= 20; col++) {
       allLocations.push(`${row}${col}`);
     }
   }
 
-  // Zone 3: G-L, 1-6
-  for (let row of ['G', 'H', 'I', 'J', 'K', 'L']) {
-    for (let col = 1; col <= 6; col++) {
+  // Zone 3: H-N, 1-10
+  for (let row of ['H', 'I', 'J', 'K', 'L', 'M', 'N']) {
+    for (let col = 1; col <= 10; col++) {
       allLocations.push(`${row}${col}`);
     }
   }
 
-  // Zone 4: G-L, 7-12
-  for (let row of ['G', 'H', 'I', 'J', 'K', 'L']) {
-    for (let col = 7; col <= 12; col++) {
+  // Zone 4: H-N, 11-20
+  for (let row of ['H', 'I', 'J', 'K', 'L', 'M', 'N']) {
+    for (let col = 11; col <= 20; col++) {
       allLocations.push(`${row}${col}`);
     }
   }
@@ -391,19 +391,19 @@ export default function App() {
                 <div className="flex items-center space-x-3 text-xs">
                   <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-purple-600 rounded"></div>
-                    <span className="text-gray-400">Zone 1 (A-F, 1-6)</span>
+                    <span className="text-gray-400">Zone 1 (A-G, 1-10)</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-blue-600 rounded"></div>
-                    <span className="text-gray-400">Zone 2 (A-F, 7-12)</span>
+                    <span className="text-gray-400">Zone 2 (A-G, 11-20)</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-green-600 rounded"></div>
-                    <span className="text-gray-400">Zone 3 (G-L, 1-6)</span>
+                    <span className="text-gray-400">Zone 3 (H-N, 1-10)</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-amber-600 rounded"></div>
-                    <span className="text-gray-400">Zone 4 (G-L, 7-12)</span>
+                    <span className="text-gray-400">Zone 4 (H-N, 11-20)</span>
                   </div>
                 </div>
               </div>
@@ -435,12 +435,12 @@ export default function App() {
 
         {/* Top Row: Zone 1 and Zone 2 */}
         <div className="grid grid-cols-9 gap-0.5">
-          {/* Zone 1 (Top-Left) - Purple: Rows A-F, Cols 1-6 (6×6 grid) */}
+          {/* Zone 1 (Top-Left) - Purple: Rows A-G, Cols 1-10 (7×10 grid) */}
           <div className="col-span-4 bg-purple-900/30 p-2 rounded border border-purple-500/50">
-            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+            <div className="grid grid-cols-10 grid-rows-7 gap-1.5 px-1">
               {grid.filter(cell =>
-                ['A','B','C','D','E','F'].includes(cell.row) &&
-                cell.column >= 1 && cell.column <= 6
+                ['A','B','C','D','E','F','G'].includes(cell.row) &&
+                cell.column >= 1 && cell.column <= 10
               ).map(cell => {
                 const pallet = pallets.find(p => p.location === cell.id);
                 return (
@@ -465,12 +465,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Zone 2 (Top-Right) - Blue: Rows A-F, Cols 7-12 (6×6 grid) */}
+          {/* Zone 2 (Top-Right) - Blue: Rows A-G, Cols 11-20 (7×10 grid) */}
           <div className="col-span-4 bg-blue-900/30 p-2 rounded border border-blue-500/50">
-            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+            <div className="grid grid-cols-10 grid-rows-7 gap-1.5 px-1">
               {grid.filter(cell =>
-                ['A','B','C','D','E','F'].includes(cell.row) &&
-                cell.column >= 7 && cell.column <= 12
+                ['A','B','C','D','E','F','G'].includes(cell.row) &&
+                cell.column >= 11 && cell.column <= 20
               ).map(cell => {
                 const pallet = pallets.find(p => p.location === cell.id);
                 return (
@@ -498,12 +498,12 @@ export default function App() {
 
         {/* Bottom Row: Zone 3 and Zone 4 */}
         <div className="grid grid-cols-9 gap-0.5">
-          {/* Zone 3 (Bottom-Left) - Green: Rows G-L, Cols 1-6 (6×6 grid) */}
+          {/* Zone 3 (Bottom-Left) - Green: Rows H-N, Cols 1-10 (7×10 grid) */}
           <div className="col-span-4 bg-green-900/30 p-2 rounded border border-green-500/50">
-            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+            <div className="grid grid-cols-10 grid-rows-7 gap-1.5 px-1">
               {grid.filter(cell =>
-                ['G','H','I','J','K','L'].includes(cell.row) &&
-                cell.column >= 1 && cell.column <= 6
+                ['H','I','J','K','L','M','N'].includes(cell.row) &&
+                cell.column >= 1 && cell.column <= 10
               ).map(cell => {
                 const pallet = pallets.find(p => p.location === cell.id);
                 return (
@@ -528,12 +528,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Zone 4 (Bottom-Right) - Amber: Rows G-L, Cols 7-12 (6×6 grid) */}
+          {/* Zone 4 (Bottom-Right) - Amber: Rows H-N, Cols 11-20 (7×10 grid) */}
           <div className="col-span-4 bg-amber-900/30 p-2 rounded border border-amber-500/50">
-            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+            <div className="grid grid-cols-10 grid-rows-7 gap-1.5 px-1">
               {grid.filter(cell =>
-                ['G','H','I','J','K','L'].includes(cell.row) &&
-                cell.column >= 7 && cell.column <= 12
+                ['H','I','J','K','L','M','N'].includes(cell.row) &&
+                cell.column >= 11 && cell.column <= 20
               ).map(cell => {
                 const pallet = pallets.find(p => p.location === cell.id);
                 return (
@@ -559,7 +559,7 @@ export default function App() {
               
               {/* Grid Labels */}
               <div className="mt-3 text-center text-xs text-gray-500">
-                4 Zones with Operational Pathways | Each Zone: 6×6 Grid (36 positions per zone) | Total: 144 positions
+                4 Zones with Operational Pathways | Each Zone: 7×10 Grid (70 positions per zone) | Total: 280 positions
               </div>
             </div>
           </div>
@@ -589,7 +589,7 @@ export default function App() {
                 <StatCard
                   icon={<Package className="w-5 h-5" />}
                   label="Active Pallets"
-                  value={`${pallets.length}/144`}
+                  value={`${pallets.length}/280`}
                   trend={3}
                   trendLabel="vs yesterday"
                   color="blue"
@@ -604,7 +604,7 @@ export default function App() {
                 <StatCard
                   icon={<Grid3x3 className="w-5 h-5" />}
                   label="Space Utilization"
-                  value={`${Math.round((pallets.length / 144) * 100)}%`}
+                  value={`${Math.round((pallets.length / 280) * 100)}%`}
                   color="amber"
                 />
               </div>
