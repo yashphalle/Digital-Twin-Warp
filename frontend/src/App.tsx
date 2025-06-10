@@ -34,28 +34,69 @@ interface Activity {
 
 // Utils
 const getCameraZone = (row: string, col: number): number => {
+  // Convert row letter to index (0-15)
   const rowIndex = row.charCodeAt(0) - 'A'.charCodeAt(0);
+  // Convert column to index (0-31)
   const colIndex = col - 1;
-  
-  if (rowIndex < 4 && colIndex < 4) return 1;
-  if (rowIndex < 4 && colIndex >= 4) return 2;
-  if (rowIndex >= 4 && colIndex < 4) return 3;
-  if (rowIndex >= 4 && colIndex >= 4) return 4;
-  return 1;
+
+  // Zone 1: Top-left (rows A-F, columns 1-6)
+  if (rowIndex < 6 && colIndex < 6) return 1;
+  // Zone 2: Top-right (rows A-F, columns 7-12)
+  if (rowIndex < 6 && colIndex >= 6 && colIndex < 12) return 2;
+  // Zone 3: Bottom-left (rows G-L, columns 1-6)
+  if (rowIndex >= 6 && rowIndex < 12 && colIndex < 6) return 3;
+  // Zone 4: Bottom-right (rows G-L, columns 7-12)
+  if (rowIndex >= 6 && rowIndex < 12 && colIndex >= 6 && colIndex < 12) return 4;
+
+  return 1; // Default fallback
 };
 
 // Dummy Data Generator
 const generateDummyPallets = (): Pallet[] => {
-  const locations = ['A1', 'A3', 'B2', 'B4', 'C1', 'C3', 'D2', 'D4', // Zone 1
-                     'A5', 'A7', 'B6', 'B8', 'C5', 'C7', 'D6', 'D8', // Zone 2
-                     'E1', 'E3', 'F2', 'F4', 'G1', 'G3', 'H2', 'H4', // Zone 3
-                     'E5', 'E7', 'F6', 'F8', 'G5', 'G7', 'H6', 'H8']; // Zone 4
-  
-  return locations.map((loc, index) => {
+  // Generate all possible locations for each zone
+  const allLocations: string[] = [];
+
+  // Zone 1: A-F, 1-6
+  for (let row of ['A', 'B', 'C', 'D', 'E', 'F']) {
+    for (let col = 1; col <= 6; col++) {
+      allLocations.push(`${row}${col}`);
+    }
+  }
+
+  // Zone 2: A-F, 7-12
+  for (let row of ['A', 'B', 'C', 'D', 'E', 'F']) {
+    for (let col = 7; col <= 12; col++) {
+      allLocations.push(`${row}${col}`);
+    }
+  }
+
+  // Zone 3: G-L, 1-6
+  for (let row of ['G', 'H', 'I', 'J', 'K', 'L']) {
+    for (let col = 1; col <= 6; col++) {
+      allLocations.push(`${row}${col}`);
+    }
+  }
+
+  // Zone 4: G-L, 7-12
+  for (let row of ['G', 'H', 'I', 'J', 'K', 'L']) {
+    for (let col = 7; col <= 12; col++) {
+      allLocations.push(`${row}${col}`);
+    }
+  }
+
+  // Shuffle the locations randomly
+  const shuffledLocations = [...allLocations].sort(() => Math.random() - 0.5);
+
+  // Take a random subset (60-70% occupancy for realistic warehouse)
+  const occupancyRate = 0.6 + Math.random() * 0.1; // 60-70% occupancy
+  const numPallets = Math.floor(allLocations.length * occupancyRate);
+  const selectedLocations = shuffledLocations.slice(0, numPallets);
+
+  return selectedLocations.map((loc, index) => {
     const row = loc[0];
-    const col = parseInt(loc[1]);
+    const col = parseInt(loc.slice(1));
     const cameraId = getCameraZone(row, col);
-    
+
     return {
       id: `PAL-2024-${String(index + 1000).padStart(4, '0')}`,
       location: loc,
@@ -72,9 +113,32 @@ const generateDummyPallets = (): Pallet[] => {
 };
 
 // Generate grid structure
+// const generateGrid = (): GridCell[] => {
+//   const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+//   const cols = [1, 2, 3, 4, 5, 6, 7, 8];
+//   const grid: GridCell[] = [];
+  
+//   rows.forEach(row => {
+//     cols.forEach(col => {
+//       grid.push({
+//         id: `${row}${col}`,
+//         row,
+//         column: col,
+//         occupied: false,
+//         palletId: undefined,
+//         cameraZone: getCameraZone(row, col)
+//       });
+//     });
+//   });
+  
+//   return grid;
+// };
+
 const generateGrid = (): GridCell[] => {
-  const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-  const cols = [1, 2, 3, 4, 5, 6, 7, 8];
+  // Use letters A-P for 16 rows
+  const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
+  // Use numbers 1-32 for 32 columns
+  const cols = Array.from({ length: 32 }, (_, i) => i + 1);
   const grid: GridCell[] = [];
   
   rows.forEach(row => {
@@ -93,19 +157,20 @@ const generateGrid = (): GridCell[] => {
   return grid;
 };
 
+
 // Header Component
 const Header: React.FC = () => {
   return (
     <header className="bg-gray-900 border-b border-gray-800 px-6 py-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-6">
-          <div className="flex items-center space-x-2">
-            <Package className="w-8 h-8 text-blue-500" />
-            <h1 className="text-xl font-bold text-white">Warehouse Tracker</h1>
-          </div>
+      <div className="flex items-center justify-center relative">
+        {/* Centered logo and title */}
+        <div className="flex items-center space-x-4">
+          <img src="/logo3.png" alt="WARP Logo" className="w-24 h-18" />
+          <h1 className="text-2xl font-bold text-white">Digital Twin</h1>
         </div>
-        
-        <div className="flex items-center space-x-6">
+
+        {/* Right side controls */}
+        <div className="absolute right-0 flex items-center space-x-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
@@ -114,12 +179,12 @@ const Header: React.FC = () => {
               className="bg-gray-800 text-white pl-10 pr-4 py-2 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          
+
           <button className="relative p-2 text-gray-400 hover:text-white transition-colors">
             <Bell className="w-6 h-6" />
             <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
           </button>
-          
+
           <button className="p-2 text-gray-400 hover:text-white transition-colors">
             <User className="w-6 h-6" />
           </button>
@@ -173,9 +238,17 @@ interface GridCellProps {
   onSelect: (cellId: string, pallet?: Pallet) => void;
   selected: string | null;
   showLabel?: boolean;
+  isZoneBoundary?: boolean;
 }
 
-const GridCell: React.FC<GridCellProps> = ({ cell, pallet, onSelect, selected, showLabel = true }) => {
+const GridCell: React.FC<GridCellProps> = ({ 
+  cell, 
+  pallet, 
+  onSelect, 
+  selected, 
+  showLabel = true,
+  isZoneBoundary = false
+}) => {
   const isOccupied = !!pallet;
   const isSelected = selected === cell.id;
   
@@ -186,21 +259,30 @@ const GridCell: React.FC<GridCellProps> = ({ cell, pallet, onSelect, selected, s
     4: 'border-amber-600 bg-amber-900/20'
   };
   
+  // Add zone boundary styling
+  const zoneBoundaryClass = isZoneBoundary 
+    ? 'ring-1 ring-gray-500' 
+    : '';
+  
   return (
     <div
       onClick={() => onSelect(cell.id, pallet)}
       className={`
-        relative aspect-square rounded-md p-1 cursor-pointer transition-all duration-200 border
-        ${isOccupied 
-          ? isSelected 
-            ? 'bg-blue-600 ring-2 ring-blue-400 transform scale-110 z-10' 
+        relative aspect-square rounded p-0 cursor-pointer transition-all duration-200 border
+        w-10 h-10 min-w-[40px] min-h-[40px] text-center flex items-center justify-center
+        ${isOccupied
+          ? isSelected
+            ? 'bg-blue-600 ring-2 ring-blue-400 transform scale-110 z-10'
             : `${cameraColors[pallet.cameraId]} hover:opacity-80`
           : 'bg-gray-800/50 hover:bg-gray-700/50 border-gray-700'
         }
+        ${zoneBoundaryClass}
       `}
     >
       {showLabel && (
-        <div className="text-[10px] text-gray-400 absolute top-0.5 left-1">{cell.id}</div>
+        <div className="text-[4px] text-gray-400 absolute top-0 left-0 right-0 font-bold overflow-hidden">
+          {cell.id}
+        </div>
       )}
       {isOccupied && (
         <div className="flex items-center justify-center h-full">
@@ -302,32 +384,32 @@ export default function App() {
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col">
           {/* Global Grid Map */}
-          <div className="flex-1 p-6">
+          <div className="flex-1 p-4">
             <div className="bg-gray-800 rounded-lg p-6 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold">Global Warehouse Map</h2>
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3 text-xs">
+                  <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-purple-600 rounded"></div>
-                    <span className="text-xs text-gray-400">Zone 1</span>
+                    <span className="text-gray-400">Zone 1 (A-F, 1-6)</span>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-blue-600 rounded"></div>
-                    <span className="text-xs text-gray-400">Zone 2</span>
+                    <span className="text-gray-400">Zone 2 (A-F, 7-12)</span>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-green-600 rounded"></div>
-                    <span className="text-xs text-gray-400">Zone 3</span>
+                    <span className="text-gray-400">Zone 3 (G-L, 1-6)</span>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-amber-600 rounded"></div>
-                    <span className="text-xs text-gray-400">Zone 4</span>
+                    <span className="text-gray-400">Zone 4 (G-L, 7-12)</span>
                   </div>
                 </div>
               </div>
               
-              <div className="flex-1 flex items-center justify-center">
-                <div className="grid grid-cols-8 gap-1.5 p-4 bg-gray-900 rounded-lg">
+              {/* <div className="flex-1 flex items-center justify-center">
+                <div className="grid grid-cols-8 gap-2 p-6 bg-gray-900 rounded-lg max-w-4xl w-full">
                   {grid.map(cell => {
                     const pallet = pallets.find(p => p.location === cell.id);
                     return (
@@ -341,11 +423,143 @@ export default function App() {
                     );
                   })}
                 </div>
-              </div>
+              </div> */}
+            
+{/* 4-Zone Warehouse Layout with Pathways */}
+<div className="flex-1 flex items-center justify-center overflow-auto p-1">
+  {/* Outer pathway border */}
+  <div className="bg-yellow-900/20 p-1 rounded border-2 border-yellow-600/40 w-full h-full max-w-none">
+    <div className="bg-gray-900 p-1 rounded h-full">
+      {/* Main warehouse grid */}
+      <div className="grid grid-rows-[2fr_0.5fr_2fr] gap-0.5 h-full w-full">
+
+        {/* Top Row: Zone 1 and Zone 2 */}
+        <div className="grid grid-cols-9 gap-0.5">
+          {/* Zone 1 (Top-Left) - Purple: Rows A-F, Cols 1-6 (6×6 grid) */}
+          <div className="col-span-4 bg-purple-900/30 p-2 rounded border border-purple-500/50">
+            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+              {grid.filter(cell =>
+                ['A','B','C','D','E','F'].includes(cell.row) &&
+                cell.column >= 1 && cell.column <= 6
+              ).map(cell => {
+                const pallet = pallets.find(p => p.location === cell.id);
+                return (
+                  <GridCell
+                    key={cell.id}
+                    cell={cell}
+                    pallet={pallet}
+                    onSelect={handleCellSelect}
+                    selected={selectedCell}
+                    showLabel={false}
+                  />
+                );
+              })}
+            </div>
+            <div className="text-center text-[12px] text-purple-300 mt-1 font-semibold">ZONE 1</div>
+          </div>
+
+          {/* Vertical Pathway */}
+          <div className="bg-slate-700/60 rounded border border-slate-500/80 flex items-center justify-center shadow-inner">
+            <div className="text-[12px] text-slate-200 font-semibold transform rotate-90 whitespace-nowrap tracking-wide">
+              {/* OPERATIONAL PATHWAY */}
+            </div>
+          </div>
+
+          {/* Zone 2 (Top-Right) - Blue: Rows A-F, Cols 7-12 (6×6 grid) */}
+          <div className="col-span-4 bg-blue-900/30 p-2 rounded border border-blue-500/50">
+            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+              {grid.filter(cell =>
+                ['A','B','C','D','E','F'].includes(cell.row) &&
+                cell.column >= 7 && cell.column <= 12
+              ).map(cell => {
+                const pallet = pallets.find(p => p.location === cell.id);
+                return (
+                  <GridCell
+                    key={cell.id}
+                    cell={cell}
+                    pallet={pallet}
+                    onSelect={handleCellSelect}
+                    selected={selectedCell}
+                    showLabel={false}
+                  />
+                );
+              })}
+            </div>
+            <div className="text-center text-[12px] text-blue-300 mt-1 font-semibold">ZONE 2</div>
+          </div>
+        </div>
+
+        {/* Horizontal Main Pathway */}
+        <div className="bg-slate-700/60 rounded border border-slate-500/80 flex items-center justify-center shadow-inner">
+          <div className="text-[12px] text-slate-200 font-semibold tracking-wide">
+            <span>OPERATIONAL PATHWAY</span>
+          </div>
+        </div>
+
+        {/* Bottom Row: Zone 3 and Zone 4 */}
+        <div className="grid grid-cols-9 gap-0.5">
+          {/* Zone 3 (Bottom-Left) - Green: Rows G-L, Cols 1-6 (6×6 grid) */}
+          <div className="col-span-4 bg-green-900/30 p-2 rounded border border-green-500/50">
+            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+              {grid.filter(cell =>
+                ['G','H','I','J','K','L'].includes(cell.row) &&
+                cell.column >= 1 && cell.column <= 6
+              ).map(cell => {
+                const pallet = pallets.find(p => p.location === cell.id);
+                return (
+                  <GridCell
+                    key={cell.id}
+                    cell={cell}
+                    pallet={pallet}
+                    onSelect={handleCellSelect}
+                    selected={selectedCell}
+                    showLabel={false}
+                  />
+                );
+              })}
+            </div>
+            <div className="text-center text-[12px] text-green-300 mt-1 font-semibold">ZONE 3</div>
+          </div>
+
+          {/* Vertical Pathway */}
+          <div className="bg-slate-700/60 rounded border border-slate-500/80 flex items-center justify-center shadow-inner">
+            <div className="text-[12px] text-slate-200 font-semibold transform rotate-90 whitespace-nowrap tracking-wide">
+              {/* OPERATIONAL PATHWAY */}
+            </div>
+          </div>
+
+          {/* Zone 4 (Bottom-Right) - Amber: Rows G-L, Cols 7-12 (6×6 grid) */}
+          <div className="col-span-4 bg-amber-900/30 p-2 rounded border border-amber-500/50">
+            <div className="grid grid-cols-6 grid-rows-6 gap-1.5 px-1">
+              {grid.filter(cell =>
+                ['G','H','I','J','K','L'].includes(cell.row) &&
+                cell.column >= 7 && cell.column <= 12
+              ).map(cell => {
+                const pallet = pallets.find(p => p.location === cell.id);
+                return (
+                  <GridCell
+                    key={cell.id}
+                    cell={cell}
+                    pallet={pallet}
+                    onSelect={handleCellSelect}
+                    selected={selectedCell}
+                    showLabel={false}
+                  />
+                );
+              })}
+            </div>
+            <div className="text-center text-[12px] text-amber-300 mt-1 font-semibold">ZONE 4</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
               
               {/* Grid Labels */}
-              <div className="mt-4 text-center text-xs text-gray-500">
-                Rows: A-H (Top to Bottom) | Columns: 1-8 (Left to Right)
+              <div className="mt-3 text-center text-xs text-gray-500">
+                4 Zones with Operational Pathways | Each Zone: 6×6 Grid (36 positions per zone) | Total: 144 positions
               </div>
             </div>
           </div>
@@ -374,8 +588,8 @@ export default function App() {
               <div className="space-y-3">
                 <StatCard
                   icon={<Package className="w-5 h-5" />}
-                  label="Total Active Pallets"
-                  value={pallets.length}
+                  label="Active Pallets"
+                  value={`${pallets.length}/144`}
                   trend={3}
                   trendLabel="vs yesterday"
                   color="blue"
@@ -390,7 +604,7 @@ export default function App() {
                 <StatCard
                   icon={<Grid3x3 className="w-5 h-5" />}
                   label="Space Utilization"
-                  value={`${Math.round((pallets.length / 64) * 100)}%`}
+                  value={`${Math.round((pallets.length / 144) * 100)}%`}
                   color="amber"
                 />
               </div>
