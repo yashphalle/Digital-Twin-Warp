@@ -1,12 +1,32 @@
-import React from 'react';
-import { X, Camera } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Camera, AlertCircle } from 'lucide-react';
 
 interface CameraModalProps {
   cameraId: number;
+  isOpen: boolean;
   onClose: () => void;
 }
 
-const CameraModal: React.FC<CameraModalProps> = ({ cameraId, onClose }) => {
+const CameraModal: React.FC<CameraModalProps> = ({ cameraId, isOpen, onClose }) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkCameraStatus();
+    }
+  }, [cameraId, isOpen]);
+
+  const checkCameraStatus = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/camera/${cameraId}/status`);
+      const data = await response.json();
+      setIsConnected(data.status === 'connected');
+      setError(data.status === 'error' ? 'Camera error' : null);
+    } catch (err) {
+      setError('Failed to check camera status');
+    }
+  };
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg w-full max-w-4xl overflow-hidden">
@@ -23,14 +43,33 @@ const CameraModal: React.FC<CameraModalProps> = ({ cameraId, onClose }) => {
           </button>
         </div>
         
-        <div className="p-0 h-[600px] flex items-center justify-center bg-gray-900/50">
-          <div className="text-center">
-            <p className="text-lg text-gray-400">Camera feed not connected</p>
-            <p className="text-sm text-gray-500 mt-2">Zone {cameraId}</p>
-            <button className="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors">
-              Connect
-            </button>
-          </div>
+        <div className="p-0 h-[600px] bg-gray-900/50 relative">
+          {isConnected ? (
+            <img
+              src={`http://localhost:8000/api/camera/${cameraId}/stream`}
+              alt={`Camera ${cameraId} feed`}
+              className="w-full h-full object-contain"
+              onError={() => setError('Stream error')}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                {error ? (
+                  <>
+                    <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                    <p className="text-lg text-red-400">{error}</p>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+                    <p className="text-lg text-gray-400">Camera disconnected</p>
+                  </>
+                )}
+                <p className="text-sm text-gray-500 mt-2">Zone {cameraId}</p>
+                <p className="text-xs text-gray-600 mt-1">Connect camera from the main dashboard</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
