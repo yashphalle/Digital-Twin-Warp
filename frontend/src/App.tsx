@@ -2,6 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { Package, Grid3x3, Search, Bell, User, TrendingUp, Clock, Activity, Box, Camera } from 'lucide-react';
 import CameraFeed from './components/CameraFeed';
 import CameraModal from './components/CameraModal';
+import WarehouseView from './components/WarehouseView';
+import TestWarehouse from './components/TestWarehouse';
+import { useTrackingStats } from './hooks/useTracking';
 
 // Types
 interface Pallet {
@@ -330,8 +333,13 @@ export default function App() {
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [selectedPallet, setSelectedPallet] = useState<Pallet | undefined>(undefined);
   const [expandedCamera, setExpandedCamera] = useState<number | null>(null);
-  
-  // Generate dummy data
+  const [viewMode, setViewMode] = useState<'grid' | 'tracking'>('tracking'); // Default to tracking view
+
+  // Get tracking stats (temporarily disabled for testing)
+  // const { stats: trackingStats } = useTrackingStats();
+  const trackingStats = null;
+
+  // Generate dummy data (keep for grid view)
   const pallets = useMemo(() => generateDummyPallets(), []);
   const grid = useMemo(() => {
     const baseGrid = generateGrid();
@@ -383,30 +391,70 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col">
-          {/* Global Grid Map */}
-          <div className="flex-1 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold">Global Warehouse Map</h2>
-                <div className="flex items-center space-x-3 text-xs">
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-purple-600 rounded"></div>
-                    <span className="text-gray-400">Zone 1 (A-G, 1-10)</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-blue-600 rounded"></div>
-                    <span className="text-gray-400">Zone 2 (A-G, 11-20)</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-green-600 rounded"></div>
-                    <span className="text-gray-400">Zone 3 (H-N, 1-10)</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-amber-600 rounded"></div>
-                    <span className="text-gray-400">Zone 4 (H-N, 11-20)</span>
-                  </div>
+          {/* View Toggle and Header */}
+          <div className="p-4 pb-0">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">
+                {viewMode === 'tracking' ? 'Real-Time Object Tracking' : 'Global Warehouse Map'}
+              </h2>
+              <div className="flex items-center space-x-4">
+                {/* View Mode Toggle */}
+                <div className="flex bg-gray-700 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('tracking')}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      viewMode === 'tracking'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    Live Tracking
+                  </button>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      viewMode === 'grid'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    Grid View
+                  </button>
                 </div>
+
+                {/* Zone Legend (only for grid view) */}
+                {viewMode === 'grid' && (
+                  <div className="flex items-center space-x-3 text-xs">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-purple-600 rounded"></div>
+                      <span className="text-gray-400">Zone 1 (A-G, 1-10)</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-blue-600 rounded"></div>
+                      <span className="text-gray-400">Zone 2 (A-G, 11-20)</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-green-600 rounded"></div>
+                      <span className="text-gray-400">Zone 3 (H-N, 1-10)</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-amber-600 rounded"></div>
+                      <span className="text-gray-400">Zone 4 (H-N, 11-20)</span>
+                    </div>
+                  </div>
+                )}
               </div>
+            </div>
+          </div>
+
+          {/* Main View Area */}
+          <div className="flex-1 p-4 pt-0">
+            {viewMode === 'tracking' ? (
+              /* New Warehouse Tracking View */
+              <TestWarehouse />
+            ) : (
+              /* Original Grid View */
+              <div className="bg-gray-800 rounded-lg p-6 h-full flex flex-col">
               
               {/* <div className="flex-1 flex items-center justify-center">
                 <div className="grid grid-cols-8 gap-2 p-6 bg-gray-900 rounded-lg max-w-4xl w-full">
@@ -561,7 +609,8 @@ export default function App() {
               <div className="mt-3 text-center text-xs text-gray-500">
                 4 Zones with Operational Pathways | Each Zone: 7×10 Grid (70 positions per zone) | Total: 280 positions
               </div>
-            </div>
+              </div>
+            )}
           </div>
           
           {/* Camera Feeds */}
@@ -586,27 +635,55 @@ export default function App() {
             <div>
               <h3 className="text-lg font-semibold mb-4">Overview</h3>
               <div className="space-y-3">
-                <StatCard
-                  icon={<Package className="w-5 h-5" />}
-                  label="Active Pallets"
-                  value={`${pallets.length}/280`}
-                  trend={3}
-                  trendLabel="vs yesterday"
-                  color="blue"
-                />
-                <StatCard
-                  icon={<TrendingUp className="w-5 h-5" />}
-                  label="Today's Throughput"
-                  value="23"
-                  trend={5}
-                  color="green"
-                />
-                <StatCard
-                  icon={<Grid3x3 className="w-5 h-5" />}
-                  label="Space Utilization"
-                  value={`${Math.round((pallets.length / 280) * 100)}%`}
-                  color="amber"
-                />
+                {viewMode === 'tracking' && trackingStats ? (
+                  <>
+                    <StatCard
+                      icon={<Package className="w-5 h-5" />}
+                      label="Tracked Objects"
+                      value={trackingStats.unique_objects}
+                      color="blue"
+                    />
+                    <StatCard
+                      icon={<Activity className="w-5 h-5" />}
+                      label="Total Detections"
+                      value={trackingStats.total_detections}
+                      color="green"
+                    />
+                    <StatCard
+                      icon={<Clock className="w-5 h-5" />}
+                      label="Recent Activity"
+                      value={trackingStats.recent_objects}
+                      color="amber"
+                    />
+                    <div className="text-xs text-gray-500 mt-2">
+                      Database: {trackingStats.database_connected ? '✅ Connected' : '❌ Disconnected'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <StatCard
+                      icon={<Package className="w-5 h-5" />}
+                      label="Active Pallets"
+                      value={`${pallets.length}/280`}
+                      trend={3}
+                      trendLabel="vs yesterday"
+                      color="blue"
+                    />
+                    <StatCard
+                      icon={<TrendingUp className="w-5 h-5" />}
+                      label="Today's Throughput"
+                      value="23"
+                      trend={5}
+                      color="green"
+                    />
+                    <StatCard
+                      icon={<Grid3x3 className="w-5 h-5" />}
+                      label="Space Utilization"
+                      value={`${Math.round((pallets.length / 280) * 100)}%`}
+                      color="amber"
+                    />
+                  </>
+                )}
               </div>
             </div>
             

@@ -1,0 +1,51 @@
+{
+  "description": "Warehouse floor coordinate mapping calibration",
+  "created_date": "2025-06-16T12:26:19.198161",
+  "warehouse_dimensions": {
+    "width_meters": 2.7432000000000003,
+    "length_meters": 1.8288000000000002,
+    "width_feet": 9.000000288,
+    "length_feet": 6.000000192000001
+  },
+  "image_corners": [
+    [
+      119,
+      36
+    ],
+    [
+      611,
+      40
+    ],
+    [
+      645,
+      359
+    ],
+    [
+      48,
+      321
+    ]
+  ],
+  "real_world_corners": [
+    [
+      0,
+      0
+    ],
+    [
+      2.7432000000000003,
+      0
+    ],
+    [
+      2.7432000000000003,
+      1.8288000000000002
+    ],
+    [
+      0,
+      1.8288000000000002
+    ]
+  ],
+  "calibration_info": {
+    "corner_order": "top-left, top-right, bottom-right, bottom-left",
+    "coordinate_system": "origin at top-left, x-axis right, y-axis down",
+    "units": "meters"
+  }
+}

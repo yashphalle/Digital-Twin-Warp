@@ -14,10 +14,94 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional, Any
 from config import Config
 import logging
+import json
 
 # Set up logging
 logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL))
 logger = logging.getLogger(__name__)
+
+class CoordinateMapper:
+    """Maps pixel coordinates to real-world floor coordinates"""
+    def __init__(self, floor_width=5.0, floor_length=4.0):
+        self.floor_width = floor_width  # meters
+        self.floor_length = floor_length  # meters
+        self.image_corners = None
+        self.matrix = None
+        self.inverse_matrix = None
+        self.is_calibrated = False
+
+        # Try to load calibration
+        self.load_calibration()
+
+    def load_calibration(self, filename="warehouse_calibration.json"):
+        """Load calibration from file"""
+        try:
+            with open(filename, 'r') as f:
+                data = json.load(f)
+
+            # Get actual dimensions from calibration file
+            warehouse_dims = data.get('warehouse_dimensions', {})
+            self.floor_width = warehouse_dims.get('width_meters', self.floor_width)
+            self.floor_length = warehouse_dims.get('length_meters', self.floor_length)
+
+            image_corners = np.array(data['image_corners'], dtype=np.float32)
+            self.set_floor_rectangle(image_corners)
+
+            logger.info(f"Coordinate calibration loaded from: {filename}")
+            logger.info(f"Warehouse dimensions: {self.floor_width:.2f}m x {self.floor_length:.2f}m")
+            return True
+        except Exception as e:
+            logger.debug(f"No calibration file found: {e}")
+            return False
+
+    def set_floor_rectangle(self, image_corners):
+        """Set the floor rectangle corners in image coordinates"""
+        self.image_corners = np.array(image_corners, dtype=np.float32)
+
+        # Real-world corners (floor coordinates in meters) - using actual loaded dimensions
+        real_corners = np.array([
+            [0, 0],                                    # Top-left
+            [self.floor_width, 0],                     # Top-right
+            [self.floor_width, self.floor_length],     # Bottom-right
+            [0, self.floor_length]                     # Bottom-left
+        ], dtype=np.float32)
+
+        # Calculate transformation matrices
+        self.matrix = cv2.getPerspectiveTransform(real_corners, self.image_corners)
+        self.inverse_matrix = cv2.getPerspectiveTransform(self.image_corners, real_corners)
+        self.is_calibrated = True
+
+        logger.info(f"Floor rectangle set: {self.floor_width:.3f}m x {self.floor_length:.3f}m")
+
+    def pixel_to_real(self, pixel_x, pixel_y):
+        """Convert pixel coordinates to real-world coordinates"""
+        if not self.is_calibrated:
+            return None, None
+
+        try:
+            real_point = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
+            pixel_point = cv2.perspectiveTransform(real_point, self.inverse_matrix)
+            real_x, real_y = pixel_point[0][0]
+
+            return float(real_x), float(real_y)
+        except Exception as e:
+            logger.error(f"Coordinate conversion error: {e}")
+            return None, None
+
+    def real_to_pixel(self, real_x, real_y):
+        """Convert real-world coordinates to pixel coordinates"""
+        if not self.is_calibrated:
+            return None, None
+
+        try:
+            real_point = np.array([[[real_x, real_y]]], dtype=np.float32)
+            pixel_point = cv2.perspectiveTransform(real_point, self.matrix)
+            pixel_x, pixel_y = pixel_point[0][0]
+
+            return int(pixel_x), int(pixel_y)
+        except Exception as e:
+            logger.error(f"Coordinate conversion error: {e}")
+            return None, None
 
 class TrackedObject:
     """Represents a tracked object with visual features"""
@@ -54,7 +138,7 @@ class TrackedObject:
         self.match_scores.append(match_score)
         
         # Keep only recent match scores
-        if len(self.match_scores) > 10:
+        if len(self.match_scores) > Config.MAX_MATCH_HISTORY:
             self.match_scores.pop(0)
             
         # Update visual features if provided
@@ -90,8 +174,8 @@ class SIFTTracker:
         
         # FLANN matcher for fast matching
         FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=50)
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=Config.FLANN_TREES)
+        search_params = dict(checks=Config.FLANN_CHECKS)
         self.flann = cv2.FlannBasedMatcher(index_params, search_params)
         
         # Matching parameters from config
@@ -110,8 +194,9 @@ class SIFTTracker:
         else:
             gray = box_region
             
-        # Apply histogram equalization for better contrast
-        gray = cv2.equalizeHist(gray)
+        # Apply histogram equalization for better contrast (if enabled)
+        if Config.HISTOGRAM_EQUALIZATION:
+            gray = cv2.equalizeHist(gray)
         
         # Extract keypoints and descriptors
         keypoints, descriptors = self.sift.detectAndCompute(gray, None)
@@ -160,7 +245,14 @@ class DetectorTracker:
         # Initialize SIFT tracker
         self.sift_tracker = SIFTTracker()
         logger.info("SIFT tracker initialized")
-        
+
+        # Initialize coordinate mapper
+        self.coordinate_mapper = CoordinateMapper(
+            floor_width=Config.WAREHOUSE_FLOOR_WIDTH,
+            floor_length=Config.WAREHOUSE_FLOOR_LENGTH
+        )
+        logger.info(f"Coordinate mapper initialized - Calibrated: {self.coordinate_mapper.is_calibrated}")
+
         # Initialize detection model
         self.model_id = Config.MODEL_ID
         logger.info(f"Loading detection model on {self.device}...")
@@ -199,6 +291,9 @@ class DetectorTracker:
             'objects_removed': 0,
             'total_detections': 0
         }
+
+        # Clean up any existing low-confidence objects from previous runs
+        self.cleanup_low_confidence_objects()
         
     def setup_gpu(self, force_gpu: bool = True):
         """Setup GPU configuration"""
@@ -268,7 +363,7 @@ class DetectorTracker:
         
         # Add padding and ensure bounds
         height, width = frame.shape[:2]
-        padding = 5
+        padding = Config.BOX_PADDING
         xmin = max(0, xmin - padding)
         ymin = max(0, ymin - padding)
         xmax = min(width, xmax + padding)
@@ -325,6 +420,7 @@ class DetectorTracker:
                 box_info = {
                     'id': matched_id,
                     'center': detection['center'],
+                    'real_center': detection.get('real_center'),
                     'bbox': detection['bbox'],
                     'confidence': detection['confidence'],
                     'match_score': match_score,
@@ -338,6 +434,9 @@ class DetectorTracker:
                 sift_kp, sift_des = self.sift_tracker.extract_features(box_region)
                 
                 if sift_des is not None:
+                    if Config.SHOW_ID_ASSIGNMENT_DEBUG:
+                        print(f"🆕 NEW ID:{self.next_id} - No existing match found (active objects: {len(self.tracked_objects)})")
+
                     new_obj = TrackedObject(self.next_id, detection, sift_kp, sift_des, box_region)
                     self.tracked_objects[self.next_id] = new_obj
                     matched_objects.add(self.next_id)
@@ -346,6 +445,7 @@ class DetectorTracker:
                     box_info = {
                         'id': self.next_id,
                         'center': detection['center'],
+                        'real_center': detection.get('real_center'),
                         'bbox': detection['bbox'],
                         'confidence': detection['confidence'],
                         'match_score': 1.0,
@@ -366,12 +466,26 @@ class DetectorTracker:
             if obj_id not in matched_objects:
                 tracked_obj.mark_disappeared()
         
-        # Remove objects that have been missing too long
+        # Remove objects that have been missing too long OR have consistently low confidence
         objects_to_remove = []
         for obj_id, tracked_obj in self.tracked_objects.items():
+            should_remove = False
+
+            # Remove if disappeared too long
             if tracked_obj.disappeared_count > self.max_disappeared_frames:
+                should_remove = True
+                if Config.SHOW_ID_ASSIGNMENT_DEBUG:
+                    print(f"🗑️ REMOVING ID:{obj_id} - disappeared for {tracked_obj.disappeared_count} frames")
+
+            # 🎯 NEW: Remove if confidence is consistently below threshold
+            elif tracked_obj.last_confidence < self.confidence_threshold:
+                should_remove = True
+                if Config.SHOW_ID_ASSIGNMENT_DEBUG:
+                    print(f"🗑️ REMOVING ID:{obj_id} - low confidence {tracked_obj.last_confidence:.3f} < {self.confidence_threshold}")
+
+            if should_remove:
                 objects_to_remove.append(obj_id)
-        
+
         for obj_id in objects_to_remove:
             del self.tracked_objects[obj_id]
             self.stats['objects_removed'] += 1
@@ -387,36 +501,42 @@ class DetectorTracker:
     def process_frame(self, frame: np.ndarray) -> Tuple[List[Dict], Dict]:
         """Process a single frame - detect and track objects"""
         self.frame_count += 1
-        
+
         # Detect objects
         detection_results = self.detect_boxes(frame)
-        
+
         # Convert detection results to our format
         detections = []
         if len(detection_results['scores']) > 0:
             sorted_indices = torch.argsort(detection_results['scores'], descending=True)
-            
+
             for idx in sorted_indices:
                 score = detection_results['scores'][idx].item()
                 box = detection_results['boxes'][idx].tolist()
-                
+
                 xmin, ymin, xmax, ymax = map(int, box)
                 center_x = int((xmin + xmax) / 2)
                 center_y = int((ymin + ymax) / 2)
-                
+
+                # Get real-world coordinates
+                real_x, real_y = None, None
+                if self.coordinate_mapper.is_calibrated:
+                    real_x, real_y = self.coordinate_mapper.pixel_to_real(center_x, center_y)
+
                 detection = {
                     'center': (center_x, center_y),
+                    'real_center': (real_x, real_y) if real_x is not None else None,
                     'bbox': (xmin, ymin, xmax, ymax),
                     'confidence': score
                 }
                 detections.append(detection)
-        
+
         # Update tracking
         tracked_boxes = self.update_tracking(detections, frame)
-        
+
         # Prepare performance stats
         perf_stats = self.get_performance_stats()
-        
+
         return tracked_boxes, perf_stats
     
     def draw_tracked_objects(self, frame: np.ndarray, tracked_boxes: List[Dict]) -> np.ndarray:
@@ -436,17 +556,17 @@ class DetectorTracker:
             age = box_info['age']
             status = box_info.get('status', 'unknown')
             
-            if status == 'new':
+            if status == 'new' or age < Config.NEW_OBJECT_THRESHOLD:
                 color = Config.COLOR_NEW_OBJECT
-            elif age > 60:
+            elif age > Config.ESTABLISHED_OBJECT_THRESHOLD:
                 color = Config.COLOR_ESTABLISHED_OBJECT
             else:
                 color = Config.COLOR_TRACKING_OBJECT
             
             # Draw bounding box
-            cv2.rectangle(annotated_frame, (xmin, ymin), (xmax, ymax), color, 2)
-            cv2.circle(annotated_frame, (center_x, center_y), 8, (0, 0, 255), -1)
-            cv2.circle(annotated_frame, (center_x, center_y), 10, (255, 255, 255), 2)
+            cv2.rectangle(annotated_frame, (xmin, ymin), (xmax, ymax), color, Config.BBOX_THICKNESS)
+            cv2.circle(annotated_frame, (center_x, center_y), Config.CENTER_DOT_RADIUS, Config.CENTER_DOT_COLOR, -1)
+            cv2.circle(annotated_frame, (center_x, center_y), Config.CENTER_BORDER_RADIUS, Config.CENTER_BORDER_COLOR, 2)
             
             # Enhanced label with tracking info
             if Config.SHOW_OBJECT_IDS:
@@ -455,11 +575,226 @@ class DetectorTracker:
                     label += f" Duration:{age:.0f}s"
                 if Config.SHOW_MATCH_SCORES and 'match_score' in box_info:
                     label += f" S:{box_info['match_score']:.2f}"
-                
-                cv2.putText(annotated_frame, label, (xmin, ymin-10), 
+                if Config.SHOW_DETECTION_CONFIDENCE and 'confidence' in box_info:
+                    label += f" C:{box_info['confidence']:.2f}"
+
+                cv2.putText(annotated_frame, label, (xmin, ymin-30),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+                # Real-world coordinates label (if available)
+                real_center = box_info.get('real_center')
+                if real_center and real_center[0] is not None:
+                    real_x, real_y = real_center
+                    real_label = f"Real: {real_x:.2f}m, {real_y:.2f}m"
+                    cv2.putText(annotated_frame, real_label, (xmin, ymin-10),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
         
         return annotated_frame
+
+    def draw_calibrated_zone_overlay(self, frame):
+        """Draw calibrated zone with physical coordinates overlay"""
+        if not self.coordinate_mapper.is_calibrated or not Config.SHOW_CALIBRATED_ZONE:
+            return frame
+
+        overlay_frame = frame.copy()
+
+        # Draw the calibrated zone boundary
+        corners = self.coordinate_mapper.image_corners.astype(int)
+
+        # Draw zone boundary
+        cv2.polylines(overlay_frame, [corners], True, (0, 255, 255), 3)  # Yellow boundary
+
+        # Fill zone with semi-transparent overlay
+        zone_overlay = np.zeros_like(frame)
+        cv2.fillPoly(zone_overlay, [corners], (0, 255, 255))  # Yellow fill
+        cv2.addWeighted(overlay_frame, 0.95, zone_overlay, 0.05, 0, overlay_frame)
+
+        # Draw corner markers with physical coordinates
+        width = self.coordinate_mapper.floor_width
+        length = self.coordinate_mapper.floor_length
+        corner_labels = ["(0,0)", f"({width:.2f},0)",
+                        f"({width:.2f},{length:.2f})",
+                        f"(0,{length:.2f})"]
+
+        for i, (corner, label) in enumerate(zip(corners, corner_labels)):
+            x, y = corner
+
+            # Draw corner marker
+            cv2.circle(overlay_frame, (x, y), 8, (0, 255, 255), -1)  # Yellow dot
+            cv2.circle(overlay_frame, (x, y), 10, (255, 255, 255), 2)  # White border
+
+            # Add coordinate label
+            label_text = f"{label}m"
+            text_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+
+            # Position label to avoid going off screen
+            label_x = max(5, min(x - text_size[0]//2, frame.shape[1] - text_size[0] - 5))
+            label_y = max(20, y - 15) if i < 2 else min(frame.shape[0] - 5, y + 25)
+
+            # Draw label background
+            cv2.rectangle(overlay_frame,
+                         (label_x - 3, label_y - 15),
+                         (label_x + text_size[0] + 3, label_y + 5),
+                         (0, 0, 0), -1)
+
+            # Draw label text
+            cv2.putText(overlay_frame, label_text, (label_x, label_y),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+        # Draw grid overlay
+        if Config.SHOW_COORDINATE_GRID:
+            self._draw_coordinate_grid(overlay_frame)
+
+        # Calibration info panel removed - keeping only zone boundary and grid
+
+        return overlay_frame
+
+    def draw_all_detections(self, frame: np.ndarray) -> np.ndarray:
+        """Draw ALL detections (including filtered ones) for debugging"""
+        debug_frame = frame.copy()
+
+        if not hasattr(self, 'all_detections') or not self.all_detections:
+            cv2.putText(debug_frame, "No detections found", (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            return debug_frame
+
+        high_conf_count = 0
+        low_conf_count = 0
+
+        for detection in self.all_detections:
+            xmin, ymin, xmax, ymax = detection['bbox']
+            center_x, center_y = detection['center']
+            confidence = detection['confidence']
+            above_threshold = detection['above_threshold']
+
+            # Choose color based on confidence
+            if above_threshold:
+                color = Config.COLOR_HIGH_CONFIDENCE  # Green for high confidence
+                high_conf_count += 1
+                status = "STORED"
+            else:
+                color = Config.COLOR_LOW_CONFIDENCE   # Red for low confidence
+                low_conf_count += 1
+                status = "FILTERED"
+
+            # Draw bounding box
+            cv2.rectangle(debug_frame, (xmin, ymin), (xmax, ymax), color, 2)
+
+            # Draw center dot
+            cv2.circle(debug_frame, (center_x, center_y), 5, color, -1)
+
+            # Draw confidence label
+            conf_label = f"C:{confidence:.3f} {status}"
+            cv2.putText(debug_frame, conf_label, (xmin, ymin-10),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
+        # Draw summary
+        summary = f"Detections: {high_conf_count} STORED (Green), {low_conf_count} FILTERED (Red)"
+        cv2.putText(debug_frame, summary, (10, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        # Draw threshold line
+        threshold_text = f"Threshold: {self.confidence_threshold:.3f}"
+        cv2.putText(debug_frame, threshold_text, (10, 60),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+
+        return debug_frame
+
+    def cleanup_low_confidence_objects(self):
+        """Clean up existing objects with low confidence (from previous runs)"""
+        objects_to_remove = []
+
+        for obj_id, tracked_obj in self.tracked_objects.items():
+            if tracked_obj.last_confidence < self.confidence_threshold:
+                objects_to_remove.append(obj_id)
+
+        removed_count = len(objects_to_remove)
+        for obj_id in objects_to_remove:
+            del self.tracked_objects[obj_id]
+
+        if removed_count > 0:
+            logger.info(f"🧹 Cleaned up {removed_count} existing low-confidence objects")
+            if Config.SHOW_ID_ASSIGNMENT_DEBUG:
+                print(f"🧹 CLEANUP: Removed {removed_count} existing low-confidence objects")
+
+        return removed_count
+
+    def get_tracking_stats(self):
+        """Get comprehensive tracking statistics"""
+        active_objects = len(self.tracked_objects)
+        total_created = self.next_id - 1
+
+        # Calculate average match score
+        all_scores = []
+        for obj in self.tracked_objects.values():
+            if hasattr(obj, 'match_scores') and obj.match_scores:
+                all_scores.extend(obj.match_scores)
+
+        avg_match_score = sum(all_scores) / len(all_scores) if all_scores else 0
+
+        # Calculate ID assignment rate (rough estimate)
+        runtime_minutes = max(1, (time.time() - getattr(self, 'start_time', time.time())) / 60)
+        id_rate = total_created / runtime_minutes
+
+        return {
+            'next_id': self.next_id,
+            'active_objects': active_objects,
+            'total_created': total_created,
+            'objects_lost': total_created - active_objects,
+            'avg_match_score': avg_match_score,
+            'id_rate': id_rate,
+            'id_efficiency': active_objects / max(1, total_created)  # How many IDs are still active
+        }
+
+    def _draw_coordinate_grid(self, frame):
+        """Draw coordinate grid inside calibrated zone"""
+        if not self.coordinate_mapper.is_calibrated:
+            return
+
+        # Dynamic grid spacing based on warehouse size
+        max_dimension = max(self.coordinate_mapper.floor_width, self.coordinate_mapper.floor_length)
+        if max_dimension <= 3.0:
+            grid_spacing = 0.5  # 0.5m for small warehouses
+        elif max_dimension <= 6.0:
+            grid_spacing = 1.0  # 1m for medium warehouses
+        else:
+            grid_spacing = 2.0  # 2m for large warehouses
+
+        # Draw vertical grid lines
+        for x_real in np.arange(0, self.coordinate_mapper.floor_width + grid_spacing, grid_spacing):
+            if x_real > 0 and x_real < self.coordinate_mapper.floor_width:  # Skip boundaries
+                start_pixel = self.coordinate_mapper.real_to_pixel(x_real, 0)
+                end_pixel = self.coordinate_mapper.real_to_pixel(x_real, self.coordinate_mapper.floor_length)
+
+                if start_pixel[0] is not None and end_pixel[0] is not None:
+                    cv2.line(frame, start_pixel, end_pixel, (100, 100, 100), 1)
+
+                    # Add distance label
+                    mid_pixel = self.coordinate_mapper.real_to_pixel(x_real, self.coordinate_mapper.floor_length / 2)
+                    if mid_pixel[0] is not None:
+                        label = f'{x_real:.1f}m' if grid_spacing < 1.0 else f'{x_real:.0f}m'
+                        cv2.putText(frame, label,
+                                   (mid_pixel[0] - 10, mid_pixel[1]),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.3, (150, 150, 150), 1)
+
+        # Draw horizontal grid lines
+        for y_real in np.arange(0, self.coordinate_mapper.floor_length + grid_spacing, grid_spacing):
+            if y_real > 0 and y_real < self.coordinate_mapper.floor_length:  # Skip boundaries
+                start_pixel = self.coordinate_mapper.real_to_pixel(0, y_real)
+                end_pixel = self.coordinate_mapper.real_to_pixel(self.coordinate_mapper.floor_width, y_real)
+
+                if start_pixel[0] is not None and end_pixel[0] is not None:
+                    cv2.line(frame, start_pixel, end_pixel, (100, 100, 100), 1)
+
+                    # Add distance label
+                    mid_pixel = self.coordinate_mapper.real_to_pixel(self.coordinate_mapper.floor_width / 2, y_real)
+                    if mid_pixel[0] is not None:
+                        label = f'{y_real:.1f}m' if grid_spacing < 1.0 else f'{y_real:.0f}m'
+                        cv2.putText(frame, label,
+                                   (mid_pixel[0], mid_pixel[1] - 5),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.3, (150, 150, 150), 1)
+
+
     
     def get_performance_stats(self) -> Dict[str, Any]:
         """Get performance statistics"""

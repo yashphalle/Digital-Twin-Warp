@@ -1,6 +1,6 @@
 """
-Improved Panoramic Warehouse Tracking System
-Focus on better image blending with simpler but more reliable stitching
+Single Camera Warehouse Tracking System
+Uses ZED camera ID 1 with left view extraction for object tracking
 """
 
 import cv2
@@ -22,8 +22,8 @@ from database_handler import DatabaseHandler
 logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
-class ImprovedPanoramicCameraManager:
-    """Improved panoramic camera manager with better blending"""
+class SingleCameraManager:
+    """Single ZED camera manager with left view extraction"""
     
     def __init__(self):
         logger.info("Initializing Improved Panoramic Camera Manager...")
@@ -62,32 +62,33 @@ class ImprovedPanoramicCameraManager:
         self._initialize_cameras()
     
     def _initialize_cameras(self):
-        """Initialize cameras"""
+        """Initialize single camera (hardcoded to camera ID 1)"""
         try:
-            # Camera 1
-            self.camera1 = cv2.VideoCapture(Config.CAMERA_1_ID)
+            # Hardcoded to use camera ID 1 (ZED camera)
+            camera_id = 1
+            logger.info(f"Initializing camera ID {camera_id} (ZED left camera only)")
+
+            # Initialize camera
+            self.camera1 = cv2.VideoCapture(camera_id)
             if not self.camera1.isOpened():
-                raise Exception(f"Failed to open Camera 1 (ID: {Config.CAMERA_1_ID})")
-            
-            # Camera 2
-            self.camera2 = cv2.VideoCapture(Config.CAMERA_2_ID)
-            if not self.camera2.isOpened():
-                self.camera1.release()
-                raise Exception(f"Failed to open Camera 2 (ID: {Config.CAMERA_2_ID})")
-            
-            # Configure cameras
-            for i, camera in enumerate([self.camera1, self.camera2], 1):
-                camera.set(cv2.CAP_PROP_FRAME_WIDTH, Config.FRAME_WIDTH)
-                camera.set(cv2.CAP_PROP_FRAME_HEIGHT, Config.FRAME_HEIGHT)
-                camera.set(cv2.CAP_PROP_FPS, 30)
-                camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                # Consistent exposure
-                camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-                logger.info(f"Camera {i} configured")
-            
+                raise Exception(f"Failed to open camera {camera_id}")
+
+            # Configure camera for ZED stereo
+            self.camera1.set(cv2.CAP_PROP_FRAME_WIDTH, Config.FRAME_WIDTH)  # 1344 for ZED stereo
+            self.camera1.set(cv2.CAP_PROP_FRAME_HEIGHT, Config.FRAME_HEIGHT)  # 376 for ZED
+            self.camera1.set(cv2.CAP_PROP_FPS, 30)
+            self.camera1.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            self.camera1.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
+
+            # Single camera setup - no panoramic stitching
+            self.camera2 = None
+            self.cameras = [self.camera1]
+            self.camera_ids = [camera_id]
+
             self.cameras_initialized = True
-            logger.info("Cameras initialized for improved panoramic stitching")
-            
+            logger.info(f"✅ Camera {camera_id} initialized successfully (ZED left camera)")
+            logger.info("📷 Using single ZED camera - left view extraction enabled")
+
         except Exception as e:
             logger.error(f"Camera initialization failed: {e}")
             raise
@@ -356,44 +357,43 @@ class ImprovedPanoramicCameraManager:
             try:
                 capture_start = time.time()
                 
-                # Capture frames
-                ret1, frame1_full = self.camera1.read()
-                ret2, frame2_full = self.camera2.read()
-                
-                if ret1 and ret2:
-                    # Extract left views
-                    frame1 = self._extract_left_view(frame1_full)
-                    frame2 = self._extract_left_view(frame2_full)
-                    
-                    # Create improved panoramic stitch
-                    stitched = self.create_improved_panoramic(frame1, frame2)
-                    
-                    if stitched is not None:
-                        self.successful_stitches += 1
-                    else:
-                        self.failed_stitches += 1
-                        stitched = self._simple_stitch(frame1, frame2)
+                # Capture frame from single ZED camera
+                ret, frame_full = self.camera1.read()
+
+                if ret and frame_full is not None:
+                    # Extract left view from ZED stereo frame
+                    frame = self._extract_left_view(frame_full)
+
+                    # Single camera - use left view directly
+                    stitched = frame
+                    self.successful_stitches += 1
                     
                     # Add to buffer
                     try:
-                        self.frame_buffer.put_nowait({
+                        frame_data = {
                             'frame': stitched,
                             'timestamp': time.time(),
-                            'frame1': frame1,
-                            'frame2': frame2,
-                            'is_panoramic': True
-                        })
+                            'is_panoramic': False,  # Single camera
+                            'camera_count': 1,
+                            'frame1': frame,  # Left view from ZED
+                            'frame2': None    # No second camera
+                        }
+
+                        self.frame_buffer.put_nowait(frame_data)
                     except queue.Full:
                         # Remove old frame and add new
                         try:
                             self.frame_buffer.get_nowait()
-                            self.frame_buffer.put_nowait({
+                            frame_data = {
                                 'frame': stitched,
                                 'timestamp': time.time(),
-                                'frame1': frame1,
-                                'frame2': frame2,
-                                'is_panoramic': True
-                            })
+                                'is_panoramic': False,
+                                'camera_count': 1,
+                                'frame1': frame,
+                                'frame2': None
+                            }
+
+                            self.frame_buffer.put_nowait(frame_data)
                         except queue.Empty:
                             pass
                     
@@ -452,20 +452,22 @@ class ImprovedPanoramicCameraManager:
     def cleanup(self):
         """Cleanup resources"""
         self.stop_capture()
-        if self.camera1:
-            self.camera1.release()
-        if self.camera2:
-            self.camera2.release()
-        logger.info("Improved panoramic camera manager cleaned up")
 
-class ImprovedPanoramicSystem:
-    """System with improved panoramic blending"""
-    
+        # Release camera
+        if hasattr(self, 'camera1') and self.camera1:
+            self.camera1.release()
+            logger.info("Camera 1 released")
+
+        logger.info("Single camera manager cleaned up")
+
+class SingleCameraTrackingSystem:
+    """System with single ZED camera tracking"""
+
     def __init__(self):
-        logger.info("Initializing Improved Panoramic System...")
-        
+        logger.info("Initializing Single Camera Tracking System...")
+
         # Components
-        self.camera_manager = ImprovedPanoramicCameraManager()
+        self.camera_manager = SingleCameraManager()
         self.detector_tracker = DetectorTracker(force_gpu=Config.FORCE_GPU)
         
         try:
@@ -481,6 +483,8 @@ class ImprovedPanoramicSystem:
         self.running = False
         self.frame_count = 0
         self.session_start = datetime.now()
+        self.show_calibrated_zone = Config.SHOW_CALIBRATED_ZONE
+        self.show_all_detections = Config.SHOW_ALL_DETECTIONS
         
         # Performance
         self.total_times = []
@@ -490,10 +494,10 @@ class ImprovedPanoramicSystem:
     
     def run(self):
         """Main run loop"""
-        logger.info("Starting Improved Panoramic System...")
-        print("🎯 Improved Panoramic Warehouse Tracking")
-        print("🔥 Better Image Blending | Seamless Panoramic Views")
-        print("Press 'q' to quit, 's' for stats")
+        logger.info("Starting Single Camera Tracking System...")
+        print("🎯 Single Camera Warehouse Tracking")
+        print("📷 ZED Camera ID 1 | Left View Extraction | Real-World Coordinates")
+        print("Controls: 'q'-quit, 's'-stats, 'c'-calibrated zone, 'd'-database, 't'-tracking, 'x'-cleanup, 'a'-all detections, 'z'-check duplicates")
         
         try:
             # Start capture
@@ -520,12 +524,16 @@ class ImprovedPanoramicSystem:
                     tracked_objects, detection_stats = self.detector_tracker.process_frame(frame)
                     detection_time = time.time() - detection_start
                     
-                    # Draw annotations
+                    # Draw annotations (like stitched version)
                     annotated_frame = self.detector_tracker.draw_tracked_objects(frame, tracked_objects)
+
+                    # Draw calibrated zone overlay (if enabled)
+                    if self.show_calibrated_zone:
+                        annotated_frame = self.detector_tracker.draw_calibrated_zone_overlay(annotated_frame)
                     
-                    # Store to database (async)
+                    # Store to database (synchronous - like original working version)
                     if self.database_handler and tracked_objects:
-                        self.processing_executor.submit(self._store_objects_async, tracked_objects)
+                        self._store_objects_sync(tracked_objects)
                     
                     # Performance tracking
                     total_time = time.time() - process_start
@@ -553,6 +561,22 @@ class ImprovedPanoramicSystem:
                         break
                     elif key == ord('s'):
                         self._print_stats()
+                elif key == ord('c'):
+                    self.show_calibrated_zone = not self.show_calibrated_zone
+                    status = "ON" if self.show_calibrated_zone else "OFF"
+                    print(f"📐 Calibrated zone overlay: {status}")
+                elif key == ord('d'):
+                    self._show_database_stats()
+                elif key == ord('t'):
+                    self._show_tracking_stats()
+                elif key == ord('x'):
+                    self._cleanup_low_confidence_database()
+                elif key == ord('z'):
+                    self._check_database_duplicates()
+                elif key == ord('a'):
+                    self.show_all_detections = not self.show_all_detections
+                    mode = "ALL DETECTIONS" if self.show_all_detections else "TRACKED OBJECTS"
+                    print(f"🎯 Visualization mode: {mode}")
                 else:
                     time.sleep(0.01)
             
@@ -564,13 +588,14 @@ class ImprovedPanoramicSystem:
         finally:
             self._cleanup()
     
-    def _store_objects_async(self, tracked_objects):
-        """Async database storage"""
+    def _store_objects_sync(self, tracked_objects):
+        """Synchronous database storage - like original working version"""
         try:
             for obj in tracked_objects:
                 db_object = {
                     'persistent_id': obj['id'],
                     'center': obj['center'],
+                    'real_center': obj.get('real_center'),
                     'bbox': obj['bbox'],
                     'confidence': obj['confidence'],
                     'age_seconds': obj['age'],
@@ -587,6 +612,130 @@ class ImprovedPanoramicSystem:
 
         except Exception as e:
             logger.error(f"Database error: {e}")
+
+    def _show_database_stats(self):
+        """Show database statistics"""
+        if not self.database_handler:
+            print("❌ Database not available")
+            return
+
+        try:
+            stats = self.database_handler.get_statistics()
+            print("\n💾 DATABASE STATISTICS")
+            print("=" * 40)
+            print(f"Total database entries: {stats.get('total_detections', 0)}")
+            print(f"Unique object IDs: {stats.get('unique_objects', 0)}")
+            print(f"Tracked objects: {stats.get('tracked_objects', 0)}")
+            print(f"Recent detections (1h): {stats.get('recent_detections', 0)}")
+
+            # Check for duplicates
+            total = stats.get('total_detections', 0)
+            unique = stats.get('unique_objects', 0)
+            if total > unique:
+                duplicates = total - unique
+                print(f"🚨 DUPLICATE ENTRIES: {duplicates}")
+                print(f"📊 Database efficiency: {(unique/max(1,total)*100):.1f}%")
+            else:
+                print("✅ No duplicates detected")
+                print("📊 Database efficiency: 100%")
+
+            # Operations count
+            ops = stats.get('database_operations', {})
+            print(f"Database operations: {ops.get('inserts', 0)} inserts, {ops.get('updates', 0)} updates")
+            print("=" * 40)
+        except Exception as e:
+            print(f"❌ Database stats error: {e}")
+
+    def _show_tracking_stats(self):
+        """Show tracking statistics"""
+        if not self.detector_tracker:
+            print("❌ Tracker not available")
+            return
+
+        try:
+            stats = self.detector_tracker.get_tracking_stats()
+            print("\n🎯 TRACKING STATISTICS")
+            print("=" * 30)
+            print(f"Next ID to assign: {stats.get('next_id', 0)}")
+            print(f"Active objects: {stats.get('active_objects', 0)}")
+            print(f"Total objects created: {stats.get('total_created', 0)}")
+            print(f"Objects lost: {stats.get('objects_lost', 0)}")
+            print(f"Average match score: {stats.get('avg_match_score', 0):.3f}")
+            print(f"ID assignment rate: {stats.get('id_rate', 0):.2f} IDs/min")
+            print("=" * 30)
+
+            # Show why IDs are high
+            if stats.get('next_id', 0) > stats.get('active_objects', 0) * 3:
+                print("⚠️ HIGH ID NUMBERS DETECTED")
+                print("Possible causes:")
+                print("• Detection confidence too low")
+                print("• SIFT matching too strict")
+                print("• Objects moving too much")
+                print("• Lighting/angle changes")
+
+        except Exception as e:
+            print(f"❌ Tracking stats error: {e}")
+
+    def _cleanup_low_confidence_database(self):
+        """Clean up low-confidence objects from database and tracking"""
+        print("\n🧹 CLEANING UP LOW-CONFIDENCE OBJECTS")
+        print("=" * 40)
+
+        # Clean up tracking objects
+        if self.detector_tracker:
+            removed_tracking = self.detector_tracker.cleanup_low_confidence_objects()
+            print(f"🎯 Removed {removed_tracking} low-confidence tracking objects")
+
+        # Clean up database
+        if self.database_handler:
+            try:
+                # Remove database entries with low confidence
+                db_threshold = Config.DATABASE_MIN_CONFIDENCE if Config.DATABASE_MIN_CONFIDENCE is not None else Config.CONFIDENCE_THRESHOLD
+
+                # This would require a new method in database_handler
+                # For now, just show what would be cleaned
+                print(f"💾 Database cleanup threshold: {db_threshold:.3f}")
+                print("💾 Database cleanup not implemented yet - restart system for clean database")
+
+            except Exception as e:
+                print(f"❌ Database cleanup error: {e}")
+
+        print("✅ Cleanup complete!")
+
+    def _check_database_duplicates(self):
+        """Check for and clean up database duplicates"""
+        print("\n🔍 CHECKING DATABASE DUPLICATES")
+        print("=" * 40)
+
+        if not self.database_handler:
+            print("❌ Database not available")
+            return
+
+        try:
+            # Get database statistics first
+            stats = self.database_handler.get_statistics()
+            total_detections = stats.get('total_detections', 0)
+            unique_objects = stats.get('unique_objects', 0)
+
+            print(f"📊 Total database entries: {total_detections}")
+            print(f"🎯 Unique object IDs: {unique_objects}")
+
+            if total_detections > unique_objects:
+                duplicates = total_detections - unique_objects
+                print(f"🚨 DUPLICATES DETECTED: {duplicates} duplicate entries!")
+
+                # Clean up duplicates
+                removed = self.database_handler.clear_duplicate_objects()
+                print(f"🧹 Removed {removed} duplicate entries")
+
+                # Show updated stats
+                updated_stats = self.database_handler.get_statistics()
+                print(f"✅ Updated total entries: {updated_stats.get('total_detections', 0)}")
+            else:
+                print("✅ No duplicates found - database is clean")
+
+        except Exception as e:
+            print(f"❌ Error checking duplicates: {e}")
     
     def _create_overlay(self, frame, result_data):
         """Create performance overlay"""
@@ -708,12 +857,15 @@ class ImprovedPanoramicSystem:
 
 def main():
     """Main entry point"""
-    print("🎯 IMPROVED PANORAMIC WAREHOUSE TRACKING")
-    print("🔥 Better Image Blending | Seamless Panoramic Views")
+    print("🎯 SINGLE CAMERA WAREHOUSE TRACKING SYSTEM")
+    print("📷 Using ZED Camera ID 1 (Left View)")
+    print("🎯 SIFT-based persistent object tracking")
+    print("📐 Real-world coordinate mapping")
+    print("💾 MongoDB database storage")
     print("="*60)
-    
+
     try:
-        system = ImprovedPanoramicSystem()
+        system = SingleCameraTrackingSystem()
         system.run()
     except Exception as e:
         logger.error(f"System failed: {e}")
