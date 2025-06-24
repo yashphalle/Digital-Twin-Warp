@@ -20,10 +20,17 @@ export interface TrackedObject {
 }
 
 export interface WarehouseConfig {
+  // Primary dimensions in feet
+  width_feet: number;
+  length_feet: number;
+  
+  // Secondary dimensions in meters (for backward compatibility)
   width_meters: number;
   length_meters: number;
+  
   calibrated: boolean;
   last_updated: string;
+  units?: string;
 }
 
 export interface TrackingStats {

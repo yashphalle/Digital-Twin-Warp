@@ -1,28 +1,43 @@
 {
-  "description": "Warehouse floor coordinate mapping calibration",
-  "created_date": "2025-06-16T12:26:19.198161",
+  "description": "RTSP Camera 8 Warehouse Calibration (on fisheye-corrected image) - FEET COORDINATES - FAR END POSITION",
+  "created_date": "2025-06-24T13:26:35.276417",
+  "camera_info": {
+    "camera_id": 8,
+    "camera_name": "Camera 8 - Back Left (Far End)",
+    "rtsp_url": "rtsp://admin:wearewarp!@192.168.0.79:554/Streaming/channels/1",
+    "frame_width": 3840,
+    "frame_height": 2160,
+    "fisheye_corrected": true,
+    "lens_mm": 2.8
+  },
   "warehouse_dimensions": {
-    "width_meters": 2.7432000000000003,
-    "length_meters": 1.8288000000000002,
-    "width_feet": 9.000000288,
-    "length_feet": 6.000000192000001
+    "width_feet": 45.0,
+    "length_feet": 30.0,
+    "width_meters": 13.716,
+    "length_meters": 9.144,
+    "coverage_zone": {
+      "x_start_ft": 0,
+      "x_end_ft": 45,
+      "y_start_ft": 60,
+      "y_end_ft": 90
+    }
   },
   "image_corners": [
     [
-      119,
-      36
+      112,
+      254
     ],
     [
-      611,
-      40
+      3766,
+      281
     ],
     [
-      645,
-      359
+      3754,
+      2030
     ],
     [
-      48,
-      321
+      147,
+      1949
     ]
   ],
   "real_world_corners": [
@@ -31,21 +46,22 @@
       0
     ],
     [
-      2.7432000000000003,
+      45.0,
       0
     ],
     [
-      2.7432000000000003,
-      1.8288000000000002
+      45.0,
+      30.0
     ],
     [
       0,
-      1.8288000000000002
+      30.0
     ]
   ],
   "calibration_info": {
     "corner_order": "top-left, top-right, bottom-right, bottom-left",
     "coordinate_system": "origin at top-left, x-axis right, y-axis down",
-    "units": "meters"
+    "units": "feet",
+    "notes": "Calibrated for Camera 8 coverage zone (45ft x 30ft area) - FAR END position (60-90ft in global warehouse)"
   }
 }

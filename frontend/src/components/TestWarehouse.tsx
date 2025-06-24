@@ -45,17 +45,17 @@ const TestWarehouse: React.FC = () => {
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-gray-600 text-center">
                 <div className="text-lg font-bold">Test Warehouse</div>
-                <div className="text-sm">10m × 8m</div>
+                <div className="text-sm">180ft × 90ft</div>
               </div>
             </div>
           </div>
           
           {/* Dimension labels */}
           <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-gray-400 text-sm">
-            Width: 10m
+            Width: 180ft
           </div>
           <div className="absolute left-0 top-1/2 transform -translate-y-1/2 -rotate-90 text-gray-400 text-sm">
-            Length: 8m
+            Length: 90ft
           </div>
         </div>
       </div>

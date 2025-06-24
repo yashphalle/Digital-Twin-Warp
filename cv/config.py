@@ -41,9 +41,9 @@ class Config:
     DETECTION_PROMPT = "box. cardboard box. package."
 
     # 🎯 DETECTION CONFIDENCE TUNING (Key for intermittent detection)
-    CONFIDENCE_THRESHOLD = 0.25        # Main detection threshold - INCREASED to reduce false positives
-    BOX_THRESHOLD = 0.25               # Same as confidence threshold
-    TEXT_THRESHOLD = 0.25              # Text matching threshold
+    CONFIDENCE_THRESHOLD = 0.20        # Main detection threshold - Optimized for box detection
+    BOX_THRESHOLD = 0.20               # Same as confidence threshold
+    TEXT_THRESHOLD = 0.20              # Text matching threshold
 
     # 📉 LOWER THESE FOR MORE SENSITIVE DETECTION:
     # CONFIDENCE_THRESHOLD = 0.15      # More sensitive (more detections, some false positives)
@@ -162,7 +162,7 @@ class Config:
     SHOW_MATCH_SCORES = True
     SHOW_DETECTION_CONFIDENCE = True   # Show detection confidence for tuning
     SHOW_REAL_COORDINATES = True
-    SHOW_GRID_OVERLAY = False  # Disabled grid overlay
+    SHOW_GRID_OVERLAY = False  # Disabled grid overlay (per user request)
 
     # 🎯 DEBUG VISUALIZATION (Show ALL detections including filtered ones)
     SHOW_ALL_DETECTIONS = True         # Show both accepted and filtered detections
@@ -174,8 +174,8 @@ class Config:
     SHOW_TRACKING_STATS = True         # Show tracking statistics
 
     # Calibrated zone overlay
-    SHOW_CALIBRATED_ZONE = True
-    SHOW_COORDINATE_GRID = True
+    SHOW_CALIBRATED_ZONE = False  # Disabled per user request (no grid system)
+    SHOW_COORDINATE_GRID = False  # Disabled per user request (no grid system)
     SHOW_CALIBRATION_INFO = False  # Black info panel disabled
 
     # Object age thresholds (seconds)
@@ -278,6 +278,92 @@ class Config:
     ALERT_HIGH_GPU_USAGE = 90          # percentage
     ALERT_HIGH_MEMORY_USAGE = 85       # percentage
     
+    # ==================== MULTI-CAMERA RTSP SETTINGS ====================
+    # Full 11-camera warehouse configuration
+    ENABLE_MULTI_CAMERA_SYSTEM = True
+    ACTIVE_CAMERAS = [8]  # Only process Camera 8 for now (can enable all [1,2,3,4,5,6,7,8,9,10,11])
+    
+    # Lorex RTSP Camera URLs (11 cameras total: 4-3-4 layout)
+    RTSP_CAMERA_URLS = {
+        # Row 1 (Front) - 4 cameras
+        1: "rtsp://admin:wearewarp!@192.168.0.71:554/Streaming/channels/1",  # Front Left
+        2: "rtsp://admin:wearewarp!@192.168.0.72:554/Streaming/channels/1",  # Front Center-Left
+        3: "rtsp://admin:wearewarp!@192.168.0.73:554/Streaming/channels/1",  # Front Center-Right
+        4: "rtsp://admin:wearewarp!@192.168.0.74:554/Streaming/channels/1",  # Front Right
+        
+        # Row 2 (Middle) - 3 cameras  
+        5: "rtsp://admin:wearewarp!@192.168.0.75:554/Streaming/channels/1",  # Middle Left
+        6: "rtsp://admin:wearewarp!@192.168.0.76:554/Streaming/channels/1",  # Middle Center
+        7: "rtsp://admin:wearewarp!@192.168.0.77:554/Streaming/channels/1",  # Middle Right
+        
+        # Row 3 (Back) - 4 cameras - These are at the FAR END of warehouse
+        8: "rtsp://admin:wearewarp!@192.168.0.79:554/Streaming/channels/1",  # Back Left - ACTIVE (at far end)
+        9: "rtsp://admin:wearewarp!@192.168.0.80:554/Streaming/channels/1",  # Back Center-Left
+        10: "rtsp://admin:wearewarp!@192.168.0.81:554/Streaming/channels/1", # Back Center-Right
+        11: "rtsp://admin:wearewarp!@192.168.0.82:554/Streaming/channels/1"  # Back Right
+    }
+    
+    # Camera names for identification (4-3-4 layout)
+    CAMERA_NAMES = {
+        1: "Camera 1 - Front Left",
+        2: "Camera 2 - Front Center-Left", 
+        3: "Camera 3 - Front Center-Right",
+        4: "Camera 4 - Front Right",
+        5: "Camera 5 - Middle Left",
+        6: "Camera 6 - Middle Center",
+        7: "Camera 7 - Middle Right",
+        8: "Camera 8 - Back Left",  # Currently active
+        9: "Camera 9 - Back Center-Left",
+        10: "Camera 10 - Back Center-Right",
+        11: "Camera 11 - Back Right"
+    }
+    
+    # Full warehouse dimensions (from user diagram)
+    FULL_WAREHOUSE_WIDTH_FT = 180.0   # Total warehouse width in feet
+    FULL_WAREHOUSE_LENGTH_FT = 90.0   # Total warehouse length in feet
+    FULL_WAREHOUSE_WIDTH_M = 180.0 * 0.3048   # Convert to meters (54.864m)
+    FULL_WAREHOUSE_LENGTH_M = 90.0 * 0.3048   # Convert to meters (27.432m)
+    
+    # Camera coverage zones (approximate coverage areas in feet) - 4-3-4 layout
+    CAMERA_COVERAGE_ZONES = {
+        # Row 1 (Front) - 4 cameras
+        1: {"x_start": 0, "x_end": 45, "y_start": 0, "y_end": 30},      # Front Left
+        2: {"x_start": 35, "x_end": 80, "y_start": 0, "y_end": 30},     # Front Center-Left
+        3: {"x_start": 70, "x_end": 115, "y_start": 0, "y_end": 30},    # Front Center-Right
+        4: {"x_start": 105, "x_end": 150, "y_start": 0, "y_end": 30},   # Front Right
+        
+        # Row 2 (Middle) - 3 cameras
+        5: {"x_start": 0, "x_end": 60, "y_start": 25, "y_end": 55},     # Middle Left
+        6: {"x_start": 45, "x_end": 105, "y_start": 25, "y_end": 55},   # Middle Center
+        7: {"x_start": 90, "x_end": 150, "y_start": 25, "y_end": 55},   # Middle Right
+        
+        # Row 3 (Back) - 4 cameras
+        8: {"x_start": 0, "x_end": 45, "y_start": 60, "y_end": 90},     # Back Left - ACTIVE (at far end)
+        9: {"x_start": 35, "x_end": 80, "y_start": 60, "y_end": 90},    # Back Center-Left
+        10: {"x_start": 70, "x_end": 115, "y_start": 60, "y_end": 90},  # Back Center-Right
+        11: {"x_start": 105, "x_end": 150, "y_start": 60, "y_end": 90}  # Back Right
+    }
+    
+    # RTSP connection settings
+    RTSP_USERNAME = "admin"
+    RTSP_PASSWORD = "wearewarp!"
+    RTSP_PORT = 554
+    RTSP_TIMEOUT = 10
+    RTSP_BUFFER_SIZE = 1
+    MAX_RECONNECTION_ATTEMPTS = 5
+    RECONNECTION_DELAY = 5
+    
+    # Fisheye lens settings (2.8mm)
+    FISHEYE_LENS_MM = 2.8
+    FISHEYE_CORRECTION_ENABLED = True
+    
+    # Frame processing for RTSP cameras
+    RTSP_FRAME_WIDTH = 3840   # 4K resolution from cameras
+    RTSP_FRAME_HEIGHT = 2160
+    RTSP_PROCESSING_WIDTH = 1920  # Scale down for processing
+    RTSP_PROCESSING_HEIGHT = 1080
+    RTSP_TARGET_FPS = 20
+
     @classmethod
     def get_camera_zone(cls, row: str, col: int) -> int:
         """Get camera zone for given grid position"""

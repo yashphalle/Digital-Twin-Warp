@@ -11,6 +11,8 @@ interface TrackedObject {
 }
 
 interface WarehouseConfig {
+  width_feet?: number;
+  length_feet?: number;
   width_meters: number;
   length_meters: number;
   calibrated: boolean;
@@ -131,10 +133,10 @@ const WorkingWarehouseView: React.FC = () => {
         <div className="relative">
           {/* Dimension labels */}
           <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 text-gray-400 text-sm font-medium bg-gray-800 px-3 py-1 rounded-full border border-gray-600">
-            {config.width_meters}m
+            {config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft
           </div>
           <div className="absolute -left-20 top-1/2 transform -translate-y-1/2 -rotate-90 text-gray-400 text-sm font-medium bg-gray-800 px-3 py-1 rounded-full border border-gray-600">
-            {config.length_meters}m
+            {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft
           </div>
 
           {/* Warehouse boundary - Modern gray background */}
@@ -142,25 +144,25 @@ const WorkingWarehouseView: React.FC = () => {
             className="relative bg-gray-600 border-2 border-gray-500 rounded-lg shadow-inner"
             style={{
               width: '700px',
-              height: `${(config.length_meters / config.width_meters) * 700}px`,
+              height: `${((config.length_feet || config.length_meters * 3.28084) / (config.width_feet || config.width_meters * 3.28084)) * 700}px`,
               maxHeight: '560px',
               minHeight: '350px'
             }}
           >
             {/* Subtle grid lines for reference */}
             <div className="absolute inset-0 opacity-15">
-              {Array.from({ length: Math.floor(config.width_meters) + 1 }, (_, i) => (
+              {Array.from({ length: Math.floor((config.width_feet || config.width_meters * 3.28084) / 30) + 1 }, (_, i) => (
                 <div
                   key={`v-${i}`}
                   className="absolute h-full border-l border-gray-400"
-                  style={{ left: `${(i / config.width_meters) * 100}%` }}
+                  style={{ left: `${(i * 30 / (config.width_feet || config.width_meters * 3.28084)) * 100}%` }}
                 />
               ))}
-              {Array.from({ length: Math.floor(config.length_meters) + 1 }, (_, i) => (
+              {Array.from({ length: Math.floor((config.length_feet || config.length_meters * 3.28084) / 30) + 1 }, (_, i) => (
                 <div
                   key={`h-${i}`}
                   className="absolute w-full border-t border-gray-400"
-                  style={{ top: `${(i / config.length_meters) * 100}%` }}
+                  style={{ top: `${(i * 30 / (config.length_feet || config.length_meters * 3.28084)) * 100}%` }}
                 />
               ))}
             </div>
@@ -175,8 +177,11 @@ const WorkingWarehouseView: React.FC = () => {
             {objects.map((object) => {
               if (!object.real_center) return null;
 
-              const x = (object.real_center.x / config.width_meters) * 100;
-              const y = (object.real_center.y / config.length_meters) * 100;
+              const warehouseWidthFt = config.width_feet || config.width_meters * 3.28084;
+              const warehouseLengthFt = config.length_feet || config.length_meters * 3.28084;
+              
+              const x = (object.real_center.x / warehouseWidthFt) * 100;
+              const y = (object.real_center.y / warehouseLengthFt) * 100;
               const color = getStatusColor(object.status, object.age_seconds);
 
               return (
@@ -224,7 +229,7 @@ const WorkingWarehouseView: React.FC = () => {
                       </div>
                       <div className="flex justify-between gap-3">
                         <span className="text-gray-400">Position:</span>
-                        <span className="text-blue-400">({object.real_center.x.toFixed(1)}m, {object.real_center.y.toFixed(1)}m)</span>
+                        <span className="text-blue-400">({object.real_center.x.toFixed(1)}ft, {object.real_center.y.toFixed(1)}ft)</span>
                       </div>
                     </div>
                     {/* Tooltip arrow */}
@@ -262,13 +267,13 @@ const WorkingWarehouseView: React.FC = () => {
             (0, 0)
           </div>
           <div className="absolute -bottom-8 right-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            ({config.width_meters}, 0)
+            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, 0)
           </div>
           <div className="absolute -top-8 left-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            (0, {config.length_meters})
+            (0, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
           </div>
           <div className="absolute -top-8 right-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            ({config.width_meters}, {config.length_meters})
+            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
           </div>
         </div>
       </div>

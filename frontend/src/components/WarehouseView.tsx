@@ -35,7 +35,7 @@ const WarehouseView: React.FC = () => {
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Warehouse Tracking View</h2>
         <div className="flex gap-4 text-sm text-gray-600">
           <span>Objects: {objects?.length || 0}</span>
-          <span>Dimensions: {warehouseConfig.width_meters}m × {warehouseConfig.length_meters}m</span>
+          <span>Dimensions: {warehouseConfig.width_feet || warehouseConfig.width_meters * 3.28084}ft × {warehouseConfig.length_feet || warehouseConfig.length_meters * 3.28084}ft</span>
           <span className={`${warehouseConfig.calibrated ? 'text-green-600' : 'text-red-600'}`}>
             {warehouseConfig.calibrated ? '✓ Calibrated' : '⚠ Not Calibrated'}
           </span>
@@ -58,7 +58,7 @@ const WarehouseView: React.FC = () => {
               whiteSpace: 'nowrap'
             }}
           >
-            Width: {config.width_meters}m
+            Width: {config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft
           </div>
           
           <div
@@ -70,7 +70,7 @@ const WarehouseView: React.FC = () => {
               whiteSpace: 'nowrap'
             }}
           >
-            Length: {config.length_meters}m
+            Length: {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft
           </div>
 
           {/* Warehouse boundary */}
@@ -78,7 +78,7 @@ const WarehouseView: React.FC = () => {
             className="warehouse-boundary relative bg-gray-50 border-2 border-gray-400"
             style={{
               width: '600px',
-              height: `${(warehouseConfig.length_meters / warehouseConfig.width_meters) * 600}px`,
+              height: `${((warehouseConfig.length_feet || warehouseConfig.length_meters * 3.28084) / (warehouseConfig.width_feet || warehouseConfig.width_meters * 3.28084)) * 600}px`,
               maxHeight: '500px',
               minHeight: '300px'
             }}
@@ -86,19 +86,19 @@ const WarehouseView: React.FC = () => {
             {/* Grid lines for reference (optional) */}
             <div className="absolute inset-0 opacity-20">
               {/* Vertical lines */}
-              {Array.from({ length: Math.floor(warehouseConfig.width_meters) + 1 }, (_, i) => (
+              {Array.from({ length: Math.floor((warehouseConfig.width_feet || warehouseConfig.width_meters * 3.28084) / 30) + 1 }, (_, i) => (
                 <div
                   key={`v-${i}`}
                   className="absolute h-full border-l border-gray-300"
-                  style={{ left: `${(i / warehouseConfig.width_meters) * 100}%` }}
+                  style={{ left: `${(i * 30 / (warehouseConfig.width_feet || warehouseConfig.width_meters * 3.28084)) * 100}%` }}
                 />
               ))}
               {/* Horizontal lines */}
-              {Array.from({ length: Math.floor(warehouseConfig.length_meters) + 1 }, (_, i) => (
+              {Array.from({ length: Math.floor((warehouseConfig.length_feet || warehouseConfig.length_meters * 3.28084) / 30) + 1 }, (_, i) => (
                 <div
                   key={`h-${i}`}
                   className="absolute w-full border-t border-gray-300"
-                  style={{ top: `${(i / warehouseConfig.length_meters) * 100}%` }}
+                  style={{ top: `${(i * 30 / (warehouseConfig.length_feet || warehouseConfig.length_meters * 3.28084)) * 100}%` }}
                 />
               ))}
             </div>
@@ -132,13 +132,13 @@ const WarehouseView: React.FC = () => {
             (0, 0)
           </div>
           <div className="absolute -bottom-6 right-0 text-xs text-gray-500">
-            ({warehouseConfig.width_meters}, 0)
+            ({warehouseConfig.width_feet || warehouseConfig.width_meters * 3.28084}ft, 0)
           </div>
           <div className="absolute -top-4 left-0 text-xs text-gray-500">
-            (0, {warehouseConfig.length_meters})
+            (0, {warehouseConfig.length_feet || warehouseConfig.length_meters * 3.28084}ft)
           </div>
           <div className="absolute -top-4 right-0 text-xs text-gray-500">
-            ({warehouseConfig.width_meters}, {warehouseConfig.length_meters})
+            ({warehouseConfig.width_feet || warehouseConfig.width_meters * 3.28084}ft, {warehouseConfig.length_feet || warehouseConfig.length_meters * 3.28084}ft)
           </div>
         </div>
       </div>

@@ -142,9 +142,20 @@ class DatabaseHandler:
             
         except pymongo.errors.BulkWriteError as e:
             # Handle partial success in bulk operations
-            successful_inserts = len(e.details.get('writeErrors', []))
-            logger.warning(f"Bulk insert partial success: {successful_inserts} errors")
-            return []
+            write_errors = e.details.get('writeErrors', [])
+            error_count = len(write_errors)
+            successful_inserts = len(objects_data) - error_count
+            
+            # Log details about the errors for debugging
+            if error_count > 0:
+                logger.warning(f"Bulk insert partial success: {successful_inserts} succeeded, {error_count} failed")
+                # Log first few error details for debugging
+                for i, error in enumerate(write_errors[:3]):  # Log first 3 errors only
+                    logger.debug(f"DB Error {i+1}: {error.get('errmsg', 'Unknown error')}")
+            
+            # Return the IDs of successfully inserted objects (if available)
+            inserted_ids = e.details.get('insertedIds', [])
+            return [str(obj_id) for obj_id in inserted_ids]
         except Exception as e:
             logger.error(f"Error storing multiple objects: {e}")
             return []

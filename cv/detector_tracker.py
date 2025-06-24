@@ -21,86 +21,127 @@ logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
 class CoordinateMapper:
-    """Maps pixel coordinates to real-world floor coordinates"""
-    def __init__(self, floor_width=5.0, floor_length=4.0):
-        self.floor_width = floor_width  # meters
-        self.floor_length = floor_length  # meters
-        self.image_corners = None
-        self.matrix = None
-        self.inverse_matrix = None
+    """Maps pixel coordinates to real-world coordinates using homography"""
+    
+    def __init__(self, floor_width=45.0, floor_length=30.0, camera_id=None):
+        """Initialize coordinate mapper with floor dimensions in FEET"""
+        self.floor_width_ft = floor_width  # Floor width in feet
+        self.floor_length_ft = floor_length  # Floor length in feet
+        self.camera_id = camera_id  # Add camera ID for offset calculation
+        self.homography_matrix = None
         self.is_calibrated = False
-
-        # Try to load calibration
-        self.load_calibration()
+        
+        # Camera 8 coordinate transformation: Local (0-45ft, 0-30ft) -> Global (0-45ft, 60-90ft)
+        # Camera 8 is at the FAR END of warehouse looking down the length
+        self.camera_coverage_zones = {
+            8: {"x_offset": 0, "y_offset": 60}  # Camera 8: X stays same, Y + 60ft offset (at far end)
+        }
+        
+        logger.info(f"Coordinate mapper initialized - Floor: {floor_width:.1f}ft x {floor_length:.1f}ft")
+        if camera_id:
+            logger.info(f"Camera ID: {camera_id}")
+            if camera_id in self.camera_coverage_zones:
+                zone = self.camera_coverage_zones[camera_id]
+                logger.info(f"Camera {camera_id} coordinate transform: Local(0-{floor_width}ft, 0-{floor_length}ft) -> Global({zone['x_offset']}-{zone['x_offset']+floor_width}ft, {zone['y_offset']}-{zone['y_offset']+floor_length}ft)")
 
     def load_calibration(self, filename="warehouse_calibration.json"):
-        """Load calibration from file"""
+        """Load calibration from JSON file"""
         try:
-            with open(filename, 'r') as f:
-                data = json.load(f)
-
-            # Get actual dimensions from calibration file
-            warehouse_dims = data.get('warehouse_dimensions', {})
-            self.floor_width = warehouse_dims.get('width_meters', self.floor_width)
-            self.floor_length = warehouse_dims.get('length_meters', self.floor_length)
-
-            image_corners = np.array(data['image_corners'], dtype=np.float32)
-            self.set_floor_rectangle(image_corners)
-
+            with open(filename, 'r') as file:
+                calibration_data = json.load(file)
+            
+            # Extract warehouse dimensions (prioritize feet)
+            warehouse_dims = calibration_data.get('warehouse_dimensions', {})
+            self.floor_width_ft = warehouse_dims.get('width_feet', 45.0)
+            self.floor_length_ft = warehouse_dims.get('length_feet', 30.0)
+            
+            # Extract corners
+            image_corners = np.array(calibration_data['image_corners'], dtype=np.float32)
+            real_world_corners = np.array(calibration_data['real_world_corners'], dtype=np.float32)
+            
+            # Check units and convert if necessary
+            units = calibration_data.get('calibration_info', {}).get('units', 'feet')
+            if units == 'meters':
+                # Convert meters to feet
+                real_world_corners = real_world_corners * 3.28084
+                logger.info("Converted real-world corners from meters to feet")
+            
+            # Calculate homography from image points to real-world points
+            self.homography_matrix = cv2.findHomography(image_corners, real_world_corners)[0]
+            self.is_calibrated = True
+            
             logger.info(f"Coordinate calibration loaded from: {filename}")
-            logger.info(f"Warehouse dimensions: {self.floor_width:.2f}m x {self.floor_length:.2f}m")
-            return True
+            logger.info(f"Camera local area: {self.floor_width_ft:.1f}ft x {self.floor_length_ft:.1f}ft")
+            
+            # Log the coordinate transformation for Camera 8
+            if self.camera_id == 8:
+                logger.info(f"Camera 8 coordinate mapping: Local(0-45ft, 0-30ft) -> Global(0-45ft, 60-90ft)")
+            
+            logger.info(f"Coordinate mapper initialized - Calibrated: {self.is_calibrated}")
+            
         except Exception as e:
-            logger.debug(f"No calibration file found: {e}")
-            return False
+            logger.error(f"Failed to load calibration: {e}")
+            self.is_calibrated = False
 
     def set_floor_rectangle(self, image_corners):
-        """Set the floor rectangle corners in image coordinates"""
-        self.image_corners = np.array(image_corners, dtype=np.float32)
-
-        # Real-world corners (floor coordinates in meters) - using actual loaded dimensions
-        real_corners = np.array([
-            [0, 0],                                    # Top-left
-            [self.floor_width, 0],                     # Top-right
-            [self.floor_width, self.floor_length],     # Bottom-right
-            [0, self.floor_length]                     # Bottom-left
-        ], dtype=np.float32)
-
-        # Calculate transformation matrices
-        self.matrix = cv2.getPerspectiveTransform(real_corners, self.image_corners)
-        self.inverse_matrix = cv2.getPerspectiveTransform(self.image_corners, real_corners)
-        self.is_calibrated = True
-
-        logger.info(f"Floor rectangle set: {self.floor_width:.3f}m x {self.floor_length:.3f}m")
+        """Set floor rectangle corners for homography calculation (DEPRECATED - use load_calibration)"""
+        logger.warning("set_floor_rectangle is deprecated, use load_calibration instead")
 
     def pixel_to_real(self, pixel_x, pixel_y):
-        """Convert pixel coordinates to real-world coordinates"""
-        if not self.is_calibrated:
+        """Convert pixel coordinates to real-world coordinates in FEET with warehouse offset"""
+        if not self.is_calibrated or self.homography_matrix is None:
             return None, None
-
+        
         try:
-            real_point = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
-            pixel_point = cv2.perspectiveTransform(real_point, self.inverse_matrix)
-            real_x, real_y = pixel_point[0][0]
-
-            return float(real_x), float(real_y)
+            # Apply homography transformation
+            pixel_point = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
+            real_point = cv2.perspectiveTransform(pixel_point, self.homography_matrix)
+            
+            # Extract local coordinates (in feet)
+            local_x = float(real_point[0][0][0])
+            local_y = float(real_point[0][0][1])
+            
+            # Apply warehouse offset based on camera coverage zone
+            if self.camera_id and self.camera_id in self.camera_coverage_zones:
+                zone = self.camera_coverage_zones[self.camera_id]
+                warehouse_x = local_x + zone["x_offset"]
+                warehouse_y = local_y + zone["y_offset"]
+            else:
+                warehouse_x = local_x
+                warehouse_y = local_y
+            
+            return warehouse_x, warehouse_y
+        
         except Exception as e:
-            logger.error(f"Coordinate conversion error: {e}")
+            logger.error(f"Error in pixel_to_real conversion: {e}")
             return None, None
 
     def real_to_pixel(self, real_x, real_y):
-        """Convert real-world coordinates to pixel coordinates"""
-        if not self.is_calibrated:
+        """Convert real-world coordinates (in feet) to pixel coordinates"""
+        if not self.is_calibrated or self.homography_matrix is None:
             return None, None
-
+        
         try:
-            real_point = np.array([[[real_x, real_y]]], dtype=np.float32)
-            pixel_point = cv2.perspectiveTransform(real_point, self.matrix)
-            pixel_x, pixel_y = pixel_point[0][0]
-
-            return int(pixel_x), int(pixel_y)
+            # Remove warehouse offset to get local coordinates
+            if self.camera_id and self.camera_id in self.camera_coverage_zones:
+                zone = self.camera_coverage_zones[self.camera_id]
+                local_x = real_x - zone["x_offset"]
+                local_y = real_y - zone["y_offset"]
+            else:
+                local_x = real_x
+                local_y = real_y
+            
+            # Apply inverse homography transformation
+            real_point = np.array([[[local_x, local_y]]], dtype=np.float32)
+            pixel_point = cv2.perspectiveTransform(real_point, np.linalg.inv(self.homography_matrix))
+            
+            pixel_x = int(pixel_point[0][0][0])
+            pixel_y = int(pixel_point[0][0][1])
+            
+            return pixel_x, pixel_y
+        
         except Exception as e:
-            logger.error(f"Coordinate conversion error: {e}")
+            logger.error(f"Error in real_to_pixel conversion: {e}")
             return None, None
 
 class TrackedObject:
@@ -295,6 +336,26 @@ class DetectorTracker:
         # Clean up any existing low-confidence objects from previous runs
         self.cleanup_low_confidence_objects()
         
+    def set_camera_id(self, camera_id: int):
+        """Set camera ID for coordinate mapping and load coverage zone info"""
+        self.coordinate_mapper.camera_id = camera_id
+        
+        # Set camera coverage zone info from Config
+        if camera_id in Config.CAMERA_COVERAGE_ZONES:
+            zone_config = Config.CAMERA_COVERAGE_ZONES[camera_id]
+            self.coordinate_mapper.camera_coverage_zone = {
+                'x_start': zone_config['x_start'],
+                'x_end': zone_config['x_end'], 
+                'y_start': zone_config['y_start'],
+                'y_end': zone_config['y_end']
+            }
+            logger.info(f"Camera {camera_id} coverage zone set: {self.coordinate_mapper.camera_coverage_zone}")
+        else:
+            self.coordinate_mapper.camera_coverage_zone = None
+            
+        # Load calibration after setting camera ID
+        self.coordinate_mapper.load_calibration()
+
     def setup_gpu(self, force_gpu: bool = True):
         """Setup GPU configuration"""
         cuda_available = torch.cuda.is_available()
@@ -505,6 +566,16 @@ class DetectorTracker:
         # Detect objects
         detection_results = self.detect_boxes(frame)
 
+        # Calculate scaling factor for coordinate conversion
+        # Calibration was done on 4K (3840x2160), but detection may be on resized frames
+        frame_height, frame_width = frame.shape[:2]
+        scale_x = 3840 / frame_width  # Scale factor for X coordinates
+        scale_y = 2160 / frame_height  # Scale factor for Y coordinates
+        
+        # Log scaling info occasionally
+        if self.frame_count % 100 == 1:
+            logger.info(f"Frame size: {frame_width}x{frame_height}, Scale factors: X={scale_x:.2f}, Y={scale_y:.2f}")
+
         # Convert detection results to our format
         detections = []
         if len(detection_results['scores']) > 0:
@@ -518,15 +589,19 @@ class DetectorTracker:
                 center_x = int((xmin + xmax) / 2)
                 center_y = int((ymin + ymax) / 2)
 
-                # Get real-world coordinates
+                # Scale coordinates back to calibration frame size (4K) for accurate coordinate mapping
+                scaled_center_x = center_x * scale_x
+                scaled_center_y = center_y * scale_y
+
+                # Get real-world coordinates using scaled coordinates
                 real_x, real_y = None, None
                 if self.coordinate_mapper.is_calibrated:
-                    real_x, real_y = self.coordinate_mapper.pixel_to_real(center_x, center_y)
+                    real_x, real_y = self.coordinate_mapper.pixel_to_real(scaled_center_x, scaled_center_y)
 
                 detection = {
-                    'center': (center_x, center_y),
+                    'center': (center_x, center_y),  # Keep original frame coordinates for display
                     'real_center': (real_x, real_y) if real_x is not None else None,
-                    'bbox': (xmin, ymin, xmax, ymax),
+                    'bbox': (xmin, ymin, xmax, ymax),  # Keep original frame coordinates for display
                     'confidence': score
                 }
                 detections.append(detection)
@@ -578,17 +653,37 @@ class DetectorTracker:
                 if Config.SHOW_DETECTION_CONFIDENCE and 'confidence' in box_info:
                     label += f" C:{box_info['confidence']:.2f}"
 
-                cv2.putText(annotated_frame, label, (xmin, ymin-30),
+                cv2.putText(annotated_frame, label, (xmin, ymin-50),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-                # Real-world coordinates label (if available)
+                # Real-world coordinates label (if available) - PROMINENT DISPLAY
                 real_center = box_info.get('real_center')
                 if real_center and real_center[0] is not None:
-                    real_x, real_y = real_center
-                    real_label = f"Real: {real_x:.2f}m, {real_y:.2f}m"
-                    cv2.putText(annotated_frame, real_label, (xmin, ymin-10),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
-        
+                    real_x_ft, real_y_ft = real_center
+                    
+                    # Large, prominent real coordinate display
+                    real_label = f"Position: ({real_x_ft:.1f}ft, {real_y_ft:.1f}ft)"
+                    cv2.putText(annotated_frame, real_label, (xmin, ymin-25),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                               
+                    # Add background for better visibility
+                    text_size = cv2.getTextSize(real_label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                    cv2.rectangle(annotated_frame, (xmin-2, ymin-35), (xmin + text_size[0] + 2, ymin-15), (0, 0, 0), -1)
+                    cv2.putText(annotated_frame, real_label, (xmin, ymin-25),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                else:
+                    # Show pixel coordinates only if real coordinates unavailable
+                    pixel_label = f"Pixel: ({center_x}, {center_y}) - No Real Coords"
+                    cv2.putText(annotated_frame, pixel_label, (xmin, ymin-25),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+        # Camera coverage zone info at bottom of screen
+        if hasattr(self.coordinate_mapper, 'camera_coverage_zone') and self.coordinate_mapper.camera_coverage_zone:
+            zone = self.coordinate_mapper.camera_coverage_zone
+            zone_label = f"Camera {self.coordinate_mapper.camera_id} Zone: X({zone['x_start']}-{zone['x_end']}ft) Y({zone['y_start']}-{zone['y_end']}ft)"
+            cv2.putText(annotated_frame, zone_label, (10, annotated_frame.shape[0] - 10),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
         return annotated_frame
 
     def draw_calibrated_zone_overlay(self, frame):
@@ -610,11 +705,11 @@ class DetectorTracker:
         cv2.addWeighted(overlay_frame, 0.95, zone_overlay, 0.05, 0, overlay_frame)
 
         # Draw corner markers with physical coordinates
-        width = self.coordinate_mapper.floor_width
-        length = self.coordinate_mapper.floor_length
-        corner_labels = ["(0,0)", f"({width:.2f},0)",
-                        f"({width:.2f},{length:.2f})",
-                        f"(0,{length:.2f})"]
+        width = self.coordinate_mapper.floor_width_ft
+        length = self.coordinate_mapper.floor_length_ft
+        corner_labels = ["(0,0)", f"({width:.0f},0)",
+                        f"({width:.0f},{length:.0f})",
+                        f"(0,{length:.0f})"]
 
         for i, (corner, label) in enumerate(zip(corners, corner_labels)):
             x, y = corner
@@ -623,8 +718,8 @@ class DetectorTracker:
             cv2.circle(overlay_frame, (x, y), 8, (0, 255, 255), -1)  # Yellow dot
             cv2.circle(overlay_frame, (x, y), 10, (255, 255, 255), 2)  # White border
 
-            # Add coordinate label
-            label_text = f"{label}m"
+            # Add coordinate label in FEET
+            label_text = f"{label}ft"
             text_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
 
             # Position label to avoid going off screen
@@ -751,45 +846,45 @@ class DetectorTracker:
         if not self.coordinate_mapper.is_calibrated:
             return
 
-        # Dynamic grid spacing based on warehouse size
-        max_dimension = max(self.coordinate_mapper.floor_width, self.coordinate_mapper.floor_length)
-        if max_dimension <= 3.0:
-            grid_spacing = 0.5  # 0.5m for small warehouses
-        elif max_dimension <= 6.0:
-            grid_spacing = 1.0  # 1m for medium warehouses
+        # Dynamic grid spacing based on warehouse size - Now in FEET
+        max_dimension = max(self.coordinate_mapper.floor_width_ft, self.coordinate_mapper.floor_length_ft)
+        if max_dimension <= 10.0:
+            grid_spacing = 2.0  # 2ft for small areas
+        elif max_dimension <= 30.0:
+            grid_spacing = 5.0  # 5ft for medium areas
         else:
-            grid_spacing = 2.0  # 2m for large warehouses
+            grid_spacing = 10.0  # 10ft for large areas
 
         # Draw vertical grid lines
-        for x_real in np.arange(0, self.coordinate_mapper.floor_width + grid_spacing, grid_spacing):
-            if x_real > 0 and x_real < self.coordinate_mapper.floor_width:  # Skip boundaries
+        for x_real in np.arange(0, self.coordinate_mapper.floor_width_ft + grid_spacing, grid_spacing):
+            if x_real > 0 and x_real < self.coordinate_mapper.floor_width_ft:  # Skip boundaries
                 start_pixel = self.coordinate_mapper.real_to_pixel(x_real, 0)
-                end_pixel = self.coordinate_mapper.real_to_pixel(x_real, self.coordinate_mapper.floor_length)
+                end_pixel = self.coordinate_mapper.real_to_pixel(x_real, self.coordinate_mapper.floor_length_ft)
 
                 if start_pixel[0] is not None and end_pixel[0] is not None:
                     cv2.line(frame, start_pixel, end_pixel, (100, 100, 100), 1)
 
-                    # Add distance label
-                    mid_pixel = self.coordinate_mapper.real_to_pixel(x_real, self.coordinate_mapper.floor_length / 2)
+                    # Add distance label in FEET
+                    mid_pixel = self.coordinate_mapper.real_to_pixel(x_real, self.coordinate_mapper.floor_length_ft / 2)
                     if mid_pixel[0] is not None:
-                        label = f'{x_real:.1f}m' if grid_spacing < 1.0 else f'{x_real:.0f}m'
+                        label = f'{x_real:.0f}ft'
                         cv2.putText(frame, label,
                                    (mid_pixel[0] - 10, mid_pixel[1]),
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.3, (150, 150, 150), 1)
 
         # Draw horizontal grid lines
-        for y_real in np.arange(0, self.coordinate_mapper.floor_length + grid_spacing, grid_spacing):
-            if y_real > 0 and y_real < self.coordinate_mapper.floor_length:  # Skip boundaries
+        for y_real in np.arange(0, self.coordinate_mapper.floor_length_ft + grid_spacing, grid_spacing):
+            if y_real > 0 and y_real < self.coordinate_mapper.floor_length_ft:  # Skip boundaries
                 start_pixel = self.coordinate_mapper.real_to_pixel(0, y_real)
-                end_pixel = self.coordinate_mapper.real_to_pixel(self.coordinate_mapper.floor_width, y_real)
+                end_pixel = self.coordinate_mapper.real_to_pixel(self.coordinate_mapper.floor_width_ft, y_real)
 
                 if start_pixel[0] is not None and end_pixel[0] is not None:
                     cv2.line(frame, start_pixel, end_pixel, (100, 100, 100), 1)
 
-                    # Add distance label
-                    mid_pixel = self.coordinate_mapper.real_to_pixel(self.coordinate_mapper.floor_width / 2, y_real)
+                    # Add distance label in FEET
+                    mid_pixel = self.coordinate_mapper.real_to_pixel(self.coordinate_mapper.floor_width_ft / 2, y_real)
                     if mid_pixel[0] is not None:
-                        label = f'{y_real:.1f}m' if grid_spacing < 1.0 else f'{y_real:.0f}m'
+                        label = f'{y_real:.0f}ft'
                         cv2.putText(frame, label,
                                    (mid_pixel[0], mid_pixel[1] - 5),
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.3, (150, 150, 150), 1)
@@ -840,6 +935,47 @@ class DetectorTracker:
         if self.device == "cuda":
             torch.cuda.empty_cache()
         logger.info("DetectorTracker resources cleaned up")
+
+    def draw_coordinate_system_info(self, frame: np.ndarray) -> np.ndarray:
+        """Draw coordinate system information overlay"""
+        info_frame = frame.copy()
+        
+        # Coordinate system info panel
+        panel_x, panel_y = 10, 10
+        panel_width, panel_height = 300, 120
+        
+        # Draw semi-transparent background
+        overlay = info_frame.copy()
+        cv2.rectangle(overlay, (panel_x, panel_y), (panel_x + panel_width, panel_y + panel_height), (0, 0, 0), -1)
+        cv2.addWeighted(info_frame, 0.7, overlay, 0.3, 0, info_frame)
+        
+        # Draw border
+        cv2.rectangle(info_frame, (panel_x, panel_y), (panel_x + panel_width, panel_y + panel_height), (0, 255, 255), 2)
+        
+        # Add title
+        cv2.putText(info_frame, "Coordinate System (FEET)", (panel_x + 10, panel_y + 25),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        
+        # Add coordinate system info
+        y_offset = 50
+        if self.coordinate_mapper.is_calibrated:
+            cv2.putText(info_frame, f"Camera Coverage: {self.coordinate_mapper.floor_width_ft:.1f}ft x {self.coordinate_mapper.floor_length_ft:.1f}ft", 
+                       (panel_x + 10, panel_y + y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            y_offset += 20
+            
+            if hasattr(self.coordinate_mapper, 'camera_coverage_zone') and self.coordinate_mapper.camera_coverage_zone:
+                zone = self.coordinate_mapper.camera_coverage_zone
+                cv2.putText(info_frame, f"Global Zone: X({zone['x_start']}-{zone['x_end']}ft) Y({zone['y_start']}-{zone['y_end']}ft)", 
+                           (panel_x + 10, panel_y + y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                y_offset += 20
+            
+            cv2.putText(info_frame, f"Camera ID: {self.coordinate_mapper.camera_id}", 
+                       (panel_x + 10, panel_y + y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        else:
+            cv2.putText(info_frame, "Not Calibrated", (panel_x + 10, panel_y + y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        
+        return info_frame
 
 # Test function
 def test_detector_tracker():

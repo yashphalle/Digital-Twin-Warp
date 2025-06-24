@@ -96,7 +96,12 @@ const LiveWarehouse = () => {
   const [objects, setObjects] = useState([]);
   const [stats, setStats] = useState(null);
   const [cameras, setCameras] = useState([]);
-  const [warehouseConfig, setWarehouseConfig] = useState({ width_meters: 10.0, length_meters: 8.0 });
+  const [warehouseConfig, setWarehouseConfig] = useState({ 
+    width_feet: 180.0, 
+    length_feet: 90.0, 
+    width_meters: 54.864, 
+    length_meters: 27.432 
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -148,8 +153,10 @@ const LiveWarehouse = () => {
       if (response.ok) {
         const data = await response.json();
         setWarehouseConfig({
-          width_meters: data.width_meters || 10.0,
-          length_meters: data.length_meters || 8.0
+          width_feet: data.width_feet || 180.0,
+          length_feet: data.length_feet || 90.0,
+          width_meters: data.width_meters || 54.864,
+          length_meters: data.length_meters || 27.432
         });
       }
     } catch (err) {
@@ -192,7 +199,7 @@ const LiveWarehouse = () => {
               <span>Objects: {objects.length}</span>
               <span className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
-                Warehouse: {warehouseConfig.width_meters.toFixed(2)}m × {warehouseConfig.length_meters.toFixed(2)}m
+                Warehouse: 180ft × 90ft (45ft × 30ft Camera 8 active)
               </span>
               {error && <span className="text-red-400">Error: {error}</span>}
             </div>
@@ -238,36 +245,99 @@ const LiveWarehouse = () => {
               {/* Warehouse visualization - Using REAL dimensions */}
               <div className="flex-1 flex justify-center items-center">
                 <div className="relative">
-                  {/* Warehouse boundary - Larger sizing to fit available space */}
+                  {/* Warehouse boundary - Properly oriented: 180ft width (horizontal) × 90ft length (vertical) */}
                   <div
                     className="relative bg-gray-600 border-2 border-gray-500 rounded-lg"
                     style={{
-                      width: `${Math.max(600, warehouseConfig.width_meters * 220)}px`,
-                      height: `${Math.max(450, warehouseConfig.length_meters * 220)}px`
+                      width: `800px`, // Fixed width for better visualization
+                      height: `400px`, // Height maintains 180:90 = 2:1 aspect ratio
                     }}
                   >
+                    {/* Grid lines every 30ft */}
+                    <div className="absolute inset-0 opacity-20">
+                      {/* Vertical lines every 30ft */}
+                      {Array.from({ length: Math.floor(180 / 30) + 1 }, (_, i) => (
+                        <div key={`v-${i}`}>
+                          <div
+                            className="absolute h-full border-l border-gray-400"
+                            style={{ left: `${(i * 30 / 180) * 100}%` }}
+                          />
+                          {i > 0 && (
+                            <div
+                              className="absolute text-xs text-gray-400 font-medium"
+                              style={{ 
+                                left: `${(i * 30 / 180) * 100}%`, 
+                                top: '-20px',
+                                transform: 'translateX(-50%)'
+                              }}
+                            >
+                              {i * 30}ft
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {/* Horizontal lines every 30ft */}
+                      {Array.from({ length: Math.floor(90 / 30) + 1 }, (_, i) => (
+                        <div key={`h-${i}`}>
+                          <div
+                            className="absolute w-full border-t border-gray-400"
+                            style={{ top: `${(i * 30 / 90) * 100}%` }}
+                          />
+                          {i > 0 && (
+                            <div
+                              className="absolute text-xs text-gray-400 font-medium"
+                              style={{ 
+                                left: '-30px', 
+                                top: `${(i * 30 / 90) * 100}%`,
+                                transform: 'translateY(-50%)'
+                              }}
+                            >
+                              {i * 30}ft
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Camera 8 coverage zone overlay - AT FAR END OF WAREHOUSE */}
+                    <div
+                      className="absolute border-2 border-green-400 bg-green-400 bg-opacity-10 rounded"
+                      style={{
+                        left: `${(0 / 180) * 100}%`, // Camera 8: x_start = 0ft
+                        top: `${(60 / 90) * 100}%`,  // Camera 8: y_start = 60ft (far end)
+                        width: `${(45 / 180) * 100}%`, // Camera 8: width = 45ft
+                        height: `${(30 / 90) * 100}%`, // Camera 8: height = 30ft (90-60)
+                      }}
+                    >
+                      <div className="absolute top-1 left-1 text-xs text-green-300 font-semibold">
+                        Camera 8 Zone (Far End)
+                      </div>
+                    </div>
+
                     {/* Objects with Real Bounding Boxes */}
                     {objects.map((obj) => {
                       if (!obj.real_center || !obj.bbox) return null;
 
-                      // Convert real coordinates to percentage using REAL warehouse dimensions
-                      const centerX = (obj.real_center[0] / warehouseConfig.width_meters) * 100;
-                      const centerY = (obj.real_center[1] / warehouseConfig.length_meters) * 100;
+                      // CV system already returns global warehouse coordinates for Camera 8
+                      // Camera 8 local coordinates (0-45ft, 0-30ft) are transformed to global (0-45ft, 50-80ft)
+                      const globalX = obj.real_center[0]; // Global X coordinate (0-45ft range)
+                      const globalY = obj.real_center[1]; // Global Y coordinate (50-80ft range) - NO OFFSET NEEDED
 
-                      // Calculate bounding box dimensions in real world coordinates
-                      // Assuming bbox is [x1, y1, x2, y2] in pixels, we need to convert to real dimensions
-                      // For now, we'll use a proportional approach based on the bbox size
+                      // Convert to percentage of full warehouse dimensions
+                      const centerX = (globalX / 180) * 100; // Position within 180ft warehouse width
+                      const centerY = (globalY / 90) * 100;  // Position within 90ft warehouse length
+
+                      // Calculate bounding box dimensions based on Camera 8's coverage
                       const bboxWidth = obj.bbox[2] - obj.bbox[0]; // pixel width
                       const bboxHeight = obj.bbox[3] - obj.bbox[1]; // pixel height
 
-                      // Convert pixel dimensions to real world dimensions (rough estimation)
-                      // This assumes the camera view covers the full warehouse area
-                      const realWidth = (bboxWidth / 640) * warehouseConfig.width_meters; // assuming 640px camera width
-                      const realHeight = (bboxHeight / 480) * warehouseConfig.length_meters; // assuming 480px camera height
+                      // Scale bbox relative to Camera 8's coverage area (45ft × 30ft), not full warehouse
+                      const realWidth = (bboxWidth / 640) * 45; // Scale to Camera 8's 45ft width
+                      const realHeight = (bboxHeight / 480) * 30; // Scale to Camera 8's 30ft height
 
-                      // Convert real dimensions to percentage of warehouse display
-                      const displayWidth = (realWidth / warehouseConfig.width_meters) * 100;
-                      const displayHeight = (realHeight / warehouseConfig.length_meters) * 100;
+                      // Convert real dimensions to percentage of full warehouse display
+                      const displayWidth = (realWidth / 180) * 100; // Relative to full 180ft width
+                      const displayHeight = (realHeight / 90) * 100; // Relative to full 90ft height
 
                       return (
                         <div
@@ -291,11 +361,11 @@ const LiveWarehouse = () => {
                             ID: {obj.persistent_id}
                           </div>
 
-                          {/* Coordinate and Size Info */}
+                          {/* Coordinate and Size Info - Show actual global coordinates */}
                           <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-80 whitespace-nowrap">
-                            ({obj.real_center[0]?.toFixed(2)}m, {obj.real_center[1]?.toFixed(2)}m)
+                            ({globalX.toFixed(1)}ft, {globalY.toFixed(1)}ft)
                             <br />
-                            {realWidth.toFixed(2)}×{realHeight.toFixed(2)}m
+                            {realWidth.toFixed(1)}×{realHeight.toFixed(1)}ft
                           </div>
 
                           {/* Confidence indicator */}
@@ -333,10 +403,10 @@ const LiveWarehouse = () => {
 
                   {/* Labels - Real warehouse dimensions */}
                   <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 text-gray-300 text-base font-medium">
-                    {warehouseConfig.width_meters.toFixed(2)}m width
+                    180ft width
                   </div>
                   <div className="absolute -left-24 top-1/2 transform -translate-y-1/2 -rotate-90 text-gray-300 text-base font-medium">
-                    {warehouseConfig.length_meters.toFixed(2)}m length
+                    90ft length
                   </div>
                 </div>
               </div>
@@ -453,7 +523,7 @@ const LiveWarehouse = () => {
                   </div>
                   {obj.real_center && (
                     <div className="text-xs text-gray-400 mt-1">
-                      Position: ({obj.real_center[0]?.toFixed(1)}m, {obj.real_center[1]?.toFixed(1)}m)
+                      Position: ({obj.real_center[0]?.toFixed(1)}ft, {obj.real_center[1]?.toFixed(1)}ft)
                     </div>
                   )}
                 </div>

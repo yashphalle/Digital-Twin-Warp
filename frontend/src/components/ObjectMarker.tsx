@@ -9,11 +9,14 @@ interface ObjectMarkerProps {
 const ObjectMarker: React.FC<ObjectMarkerProps> = ({ object, warehouseConfig }) => {
   const [showDetails, setShowDetails] = useState(false);
 
-  // Convert real coordinates to pixel position (percentage)
+  // Convert real coordinates (in feet) to pixel position (percentage)
   const getPosition = () => {
     if (object.real_center) {
-      const pixelX = (object.real_center.x / warehouseConfig.width_meters) * 100;
-      const pixelY = (object.real_center.y / warehouseConfig.length_meters) * 100;
+      const warehouseWidthFt = warehouseConfig.width_feet || warehouseConfig.width_meters * 3.28084;
+      const warehouseLengthFt = warehouseConfig.length_feet || warehouseConfig.length_meters * 3.28084;
+      
+      const pixelX = (object.real_center.x / warehouseWidthFt) * 100;
+      const pixelY = (object.real_center.y / warehouseLengthFt) * 100;
       return { x: pixelX, y: pixelY };
     }
     // Fallback to center coordinates if real_center not available
@@ -128,7 +131,7 @@ const ObjectMarker: React.FC<ObjectMarkerProps> = ({ object, warehouseConfig }) 
           <div><strong>Confidence:</strong> {(object.confidence * 100).toFixed(1)}%</div>
           <div><strong>Times Seen:</strong> {object.times_seen}</div>
           {object.real_center && (
-            <div><strong>Position:</strong> ({object.real_center.x.toFixed(1)}m, {object.real_center.y.toFixed(1)}m)</div>
+            <div><strong>Position:</strong> ({object.real_center.x.toFixed(1)}ft, {object.real_center.y.toFixed(1)}ft)</div>
           )}
           
           {/* Arrow pointing down */}

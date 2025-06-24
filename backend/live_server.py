@@ -55,167 +55,172 @@ class CameraManager:
         self.initialize_cameras()
 
     def initialize_cameras(self):
-        """Initialize available cameras - try real cameras first, fallback to demo"""
-        logger.info("🎥 Initializing camera system...")
+        """Initialize all 11 cameras from configuration"""
+        logger.info("🎥 Initializing multi-camera system...")
 
-        # Try to access real cameras with different backends
-        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
-
-        for camera_id in range(4):
-            camera_found = False
-
-            for backend in backends:
-                try:
-                    logger.info(f"🔍 Trying camera {camera_id} with backend {backend}")
-                    cap = cv2.VideoCapture(camera_id, backend)
-
-                    if cap.isOpened():
-                        # Set camera properties for better performance
-                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                        cap.set(cv2.CAP_PROP_FPS, 15)  # Lower FPS to reduce conflicts
-                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer
-
-                        # Test if camera actually works
-                        ret, frame = cap.read()
-                        if ret and frame is not None:
-                            self.cameras[camera_id + 1] = cap  # Use 1-based indexing
-                            self.camera_status[camera_id + 1] = "active"
-                            logger.info(f"✅ Real Camera {camera_id + 1} initialized successfully with backend {backend}")
-                            camera_found = True
-                            break
-                        else:
-                            cap.release()
-
-                except Exception as e:
-                    logger.warning(f"⚠️  Camera {camera_id} backend {backend} failed: {e}")
-                    continue
-
-            if not camera_found:
-                self.camera_status[camera_id + 1] = "offline"
-                logger.info(f"❌ Camera {camera_id + 1} not available")
+        # Import camera configuration
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cv'))
+        
+        try:
+            from config import Config
+            
+            # Initialize all 11 cameras from Config
+            for camera_id in Config.RTSP_CAMERA_URLS.keys():
+                camera_name = Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}")
+                rtsp_url = Config.RTSP_CAMERA_URLS[camera_id]
+                
+                # Set initial status based on active cameras
+                if camera_id in Config.ACTIVE_CAMERAS:
+                    self.camera_status[camera_id] = "active"
+                    logger.info(f"✅ {camera_name} - ACTIVE")
+                else:
+                    self.camera_status[camera_id] = "ready"
+                    logger.info(f"💤 {camera_name} - STANDBY")
+                    
+        except ImportError:
+            logger.warning("⚠️  Could not import Config, using fallback camera setup")
+            self._initialize_fallback_cameras()
 
         # Log final camera status
         active_cameras = len([c for c in self.camera_status.values() if c == "active"])
-        logger.info(f"📊 Camera initialization complete: {active_cameras}/4 cameras active")
+        ready_cameras = len([c for c in self.camera_status.values() if c == "ready"])
+        total_cameras = len(self.camera_status)
+        
+        logger.info(f"📊 Camera system initialized:")
+        logger.info(f"   • Total cameras: {total_cameras}")
+        logger.info(f"   • Active cameras: {active_cameras}")
+        logger.info(f"   • Ready cameras: {ready_cameras}")
 
-        # If no real cameras, set demo status
-        if active_cameras == 0:
-            logger.info("📹 No real cameras available, using demo feeds")
-            for camera_id in range(1, 5):
-                self.camera_status[camera_id] = "demo" if camera_id <= 2 else "offline"
+    def _initialize_fallback_cameras(self):
+        """Fallback camera initialization if Config import fails"""
+        # Fallback to basic 11-camera setup
+        for camera_id in range(1, 12):
+            if camera_id == 7:  # Default active camera
+                self.camera_status[camera_id] = "active"
+            else:
+                self.camera_status[camera_id] = "ready"
+            logger.info(f"📹 Camera {camera_id} - {'ACTIVE' if camera_id == 7 else 'STANDBY'}")
 
     def get_camera_status(self):
-        """Get status of all cameras"""
-        return self.camera_status
+        """Get status of all cameras with enhanced information"""
+        try:
+            from config import Config
+            
+            camera_info = {}
+            for camera_id, status in self.camera_status.items():
+                camera_info[camera_id] = {
+                    'camera_id': camera_id,
+                    'name': Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}"),
+                    'status': status,
+                    'rtsp_url': Config.RTSP_CAMERA_URLS.get(camera_id, ""),
+                    'coverage_zone': Config.CAMERA_COVERAGE_ZONES.get(camera_id, {}),
+                    'active': camera_id in Config.ACTIVE_CAMERAS
+                }
+            
+            return camera_info
+            
+        except ImportError:
+            # Fallback format
+            return {
+                camera_id: {
+                    'camera_id': camera_id,
+                    'name': f"Camera {camera_id}",
+                    'status': status,
+                    'active': camera_id == 7
+                }
+                for camera_id, status in self.camera_status.items()
+            }
 
     def generate_frame(self, camera_id):
-        """Generate frames for a specific camera"""
+        """Generate frames for a specific camera (1-11)"""
         logger.info(f"🎥 Starting stream for camera {camera_id}")
 
-        # Check if we have a real camera
-        if camera_id in self.cameras and self.camera_status[camera_id] == "active":
-            logger.info(f"📹 Using REAL camera {camera_id}")
-            cap = self.cameras[camera_id]
-            frame_count = 0
+        status = self.camera_status.get(camera_id, "offline")
 
-            while True:
-                try:
-                    ret, frame = cap.read()
-                    if not ret or frame is None:
-                        logger.warning(f"⚠️  Camera {camera_id} read failed, switching to demo")
-                        break
+        # Try to get camera info
+        try:
+            from config import Config
+            camera_name = Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}")
+            rtsp_url = Config.RTSP_CAMERA_URLS.get(camera_id, "")
+            coverage_zone = Config.CAMERA_COVERAGE_ZONES.get(camera_id, {})
+        except ImportError:
+            camera_name = f"Camera {camera_id}"
+            rtsp_url = ""
+            coverage_zone = {}
 
-                    # Resize frame
-                    frame = cv2.resize(frame, (640, 480))
-
-                    # Add overlay information
-                    cv2.putText(frame, f"Camera {camera_id} - LIVE", (10, 30),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-                    timestamp = datetime.now().strftime("%H:%M:%S")
-                    cv2.putText(frame, timestamp, (10, 460),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-                    
-                    cv2.putText(frame, f"Frame: {frame_count}", (450, 460),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-
-                    # Add border
-                    cv2.rectangle(frame, (2, 2), (638, 478), (0, 255, 0), 2)
-
-                    # Encode frame as JPEG
-                    ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                    if ret:
-                        frame_bytes = buffer.tobytes()
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-
-                    frame_count += 1
-                    time.sleep(0.067)  # ~15 FPS
-
-                except Exception as e:
-                    logger.error(f"❌ Real camera {camera_id} error: {e}")
-                    break
-
-        # Fallback to demo/animated feed
-        logger.info(f"📺 Using demo feed for camera {camera_id}")
+        # For now, generate demo feeds since real RTSP integration is in CV module
+        logger.info(f"📺 Using demo feed for {camera_name}")
         frame_count = 0
+        
         while True:
             try:
                 # Create animated demo frame
                 frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
-                status = self.camera_status.get(camera_id, "offline")
-
-                if status in ["active", "demo"]:
+                if status in ["active", "ready"]:
+                    # Different colors for different cameras
+                    base_color = (
+                        (camera_id * 30) % 255,
+                        (camera_id * 50) % 255,
+                        (camera_id * 70) % 255
+                    )
+                    
                     # Animated background
                     color_intensity = int(50 + 30 * np.sin(frame_count * 0.1))
-                    frame[:] = (color_intensity, color_intensity//2, color_intensity//3)
+                    frame[:] = tuple(int(c * color_intensity / 255) for c in base_color)
 
                     # Add camera info
-                    cv2.putText(frame, f"Camera {camera_id}", (180, 150),
-                              cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+                    cv2.putText(frame, camera_name, (50, 100),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
-                    cv2.putText(frame, "DEMO FEED", (200, 200),
-                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    # Status indicator
+                    status_text = "🎯 ACTIVE" if status == "active" else "💤 STANDBY"
+                    cv2.putText(frame, status_text, (50, 140),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0) if status == "active" else (255, 255, 0), 2)
+
+                    # Coverage zone info
+                    if coverage_zone:
+                        zone_text = f"Zone: {coverage_zone.get('x_start', 0)}-{coverage_zone.get('x_end', 0)}ft"
+                        cv2.putText(frame, zone_text, (50, 170),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
                     # Add animated timestamp
                     timestamp = datetime.now().strftime("%H:%M:%S")
-                    cv2.putText(frame, timestamp, (220, 250),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                    cv2.putText(frame, timestamp, (50, 220),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
                     # Add frame counter
-                    cv2.putText(frame, f"Frame: {frame_count}", (220, 300),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                    cv2.putText(frame, f"Frame: {frame_count}", (50, 250),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
-                    # Add animated circle
-                    center_x = 320 + int(50 * np.cos(frame_count * 0.2))
-                    center_y = 350 + int(20 * np.sin(frame_count * 0.3))
-                    cv2.circle(frame, (center_x, center_y), 20, (0, 255, 0), -1)
+                    # Add animated element based on camera ID
+                    center_x = 320 + int(50 * np.cos(frame_count * 0.1 + camera_id))
+                    center_y = 350 + int(20 * np.sin(frame_count * 0.2 + camera_id))
+                    color = (0, 255, 0) if status == "active" else (255, 255, 0)
+                    cv2.circle(frame, (center_x, center_y), 15, color, -1)
 
                 else:
                     # Offline camera
                     frame[:] = (30, 30, 30)
-                    cv2.putText(frame, f"Camera {camera_id}", (180, 200),
-                              cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
-                    cv2.putText(frame, "OFFLINE", (220, 250),
-                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-                # Add border
-                cv2.rectangle(frame, (5, 5), (635, 475), (100, 100, 100), 2)
+                    cv2.putText(frame, camera_name, (150, 200),
+                              cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+                    cv2.putText(frame, "OFFLINE", (180, 240),
+                              cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
 
                 # Encode frame as JPEG
-                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 if ret:
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
                 frame_count += 1
-                time.sleep(0.1)  # 10 FPS for demo
+                time.sleep(0.1)  # ~10 FPS for demo
 
             except Exception as e:
-                logger.error(f"❌ Error generating demo frame for camera {camera_id}: {e}")
+                logger.error(f"❌ Error generating frame for camera {camera_id}: {e}")
                 time.sleep(1)
 
 # Initialize camera manager
@@ -321,7 +326,7 @@ async def get_tracked_objects():
 
 @app.get("/api/warehouse/config")
 async def get_warehouse_config():
-    """Get warehouse configuration"""
+    """Get warehouse configuration - Return dimensions in FEET (primary) and meters"""
     try:
         # Try to read from CV system's calibration file
         import os
@@ -340,34 +345,55 @@ async def get_warehouse_config():
                     calibration_data = json.load(f)
                     
                 warehouse_dims = calibration_data.get('warehouse_dimensions', {})
+                
+                # Get full warehouse dimensions (180ft x 90ft)
+                full_warehouse_width_ft = 180.0
+                full_warehouse_length_ft = 90.0
+                
                 return {
-                    "width_meters": warehouse_dims.get('width_meters', 10.0),
-                    "length_meters": warehouse_dims.get('length_meters', 8.0),
+                    # Primary dimensions in feet
+                    "width_feet": full_warehouse_width_ft,
+                    "length_feet": full_warehouse_length_ft,
+                    
+                    # Secondary dimensions in meters for backward compatibility
+                    "width_meters": full_warehouse_width_ft * 0.3048,
+                    "length_meters": full_warehouse_length_ft * 0.3048,
+                    
+                    # Camera coverage info
+                    "camera_coverage": warehouse_dims.get('coverage_zone', {}),
+                    
                     "calibrated": True,
                     "calibration_file": path,
                     "last_updated": datetime.now().isoformat(),
-                    "source": "cv_calibration_file"
+                    "source": "cv_calibration_file",
+                    "units": "feet"
                 }
         
-        # Fallback configuration
+        # Fallback configuration - Full warehouse in feet
         return {
-            "width_meters": 10.0,
-            "length_meters": 8.0,
+            "width_feet": 180.0,
+            "length_feet": 90.0,
+            "width_meters": 180.0 * 0.3048,  # 54.864m
+            "length_meters": 90.0 * 0.3048,   # 27.432m
             "calibrated": True,
             "calibration_file": None,
             "last_updated": datetime.now().isoformat(),
-            "source": "default_config"
+            "source": "default_config",
+            "units": "feet"
         }
         
     except Exception as e:
         logger.warning(f"⚠️  Error reading calibration: {e}")
         return {
-            "width_meters": 10.0,
-            "length_meters": 8.0,
+            "width_feet": 180.0,
+            "length_feet": 90.0,
+            "width_meters": 180.0 * 0.3048,
+            "length_meters": 90.0 * 0.3048,
             "calibrated": False,
             "error": str(e),
             "last_updated": datetime.now().isoformat(),
-            "source": "fallback"
+            "source": "fallback",
+            "units": "feet"
         }
 
 @app.get("/api/tracking/stats")
@@ -422,7 +448,7 @@ async def get_cameras_status():
                     "status": status.get(i, "offline"),
                     "stream_url": f"/api/cameras/{i}/stream"
                 }
-                for i in range(1, 5)
+                for i in range(1, 12)
             ],
             "timestamp": datetime.now().isoformat()
         }
@@ -433,17 +459,155 @@ async def get_cameras_status():
 @app.get("/api/cameras/{camera_id}/stream")
 async def get_camera_stream(camera_id: int):
     """Stream video from a specific camera"""
-    if camera_id < 1 or camera_id > 4:
+    if camera_id < 1 or camera_id > 11:
         raise HTTPException(status_code=404, detail="Camera not found")
 
+    return StreamingResponse(
+        camera_manager.generate_frame(camera_id),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+@app.get("/api/cameras/{camera_id}/info")
+async def get_camera_info(camera_id: int):
+    """Get detailed information about a specific camera"""
+    if camera_id < 1 or camera_id > 11:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    camera_status = camera_manager.get_camera_status()
+    camera_info = camera_status.get(camera_id, {})
+    
+    if not camera_info:
+        raise HTTPException(status_code=404, detail="Camera information not found")
+    
+    return {
+        "success": True,
+        "camera": camera_info,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.post("/api/cameras/{camera_id}/enable")
+async def enable_camera(camera_id: int):
+    """Enable processing for a specific camera"""
+    if camera_id < 1 or camera_id > 11:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
     try:
-        return StreamingResponse(
-            camera_manager.generate_frame(camera_id),
-            media_type="multipart/x-mixed-replace; boundary=frame"
-        )
+        # This would interface with the CV system to enable the camera
+        # For now, update status in camera manager
+        camera_manager.camera_status[camera_id] = "active"
+        
+        return {
+            "success": True,
+            "message": f"Camera {camera_id} enabled for processing",
+            "camera_id": camera_id,
+            "new_status": "active",
+            "timestamp": datetime.now().isoformat()
+        }
     except Exception as e:
-        logger.error(f"❌ Error streaming camera {camera_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error streaming camera {camera_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to enable camera: {str(e)}")
+
+@app.post("/api/cameras/{camera_id}/disable")
+async def disable_camera(camera_id: int):
+    """Disable processing for a specific camera"""
+    if camera_id < 1 or camera_id > 11:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    try:
+        # This would interface with the CV system to disable the camera
+        # For now, update status in camera manager
+        camera_manager.camera_status[camera_id] = "ready"
+        
+        return {
+            "success": True,
+            "message": f"Camera {camera_id} disabled from processing",
+            "camera_id": camera_id,
+            "new_status": "ready",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to disable camera: {str(e)}")
+
+@app.get("/api/system/multi-camera/status")
+async def get_multi_camera_system_status():
+    """Get comprehensive multi-camera system status"""
+    try:
+        camera_status = camera_manager.get_camera_status()
+        
+        # Calculate summary statistics
+        total_cameras = len(camera_status)
+        active_cameras = len([c for c in camera_status.values() if c.get('status') == 'active'])
+        ready_cameras = len([c for c in camera_status.values() if c.get('status') == 'ready'])
+        offline_cameras = len([c for c in camera_status.values() if c.get('status') == 'offline'])
+        
+        return {
+            "success": True,
+            "system_type": "multi_camera_rtsp",
+            "total_cameras": total_cameras,
+            "active_cameras": active_cameras,
+            "ready_cameras": ready_cameras,
+            "offline_cameras": offline_cameras,
+            "cameras": camera_status,
+            "warehouse_config": {
+                "width_ft": 180.0,
+                "length_ft": 90.0,
+                "coverage_zones": 11
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get multi-camera status: {e}")
+        raise HTTPException(status_code=500, detail=f"System status error: {str(e)}")
+
+@app.get("/api/cameras/coverage-zones")
+async def get_camera_coverage_zones():
+    """Get camera coverage zones for the warehouse layout"""
+    try:
+        # Try to get from Config
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cv'))
+        
+        from config import Config
+        
+        coverage_zones = {}
+        for camera_id, zone in Config.CAMERA_COVERAGE_ZONES.items():
+            coverage_zones[camera_id] = {
+                "camera_id": camera_id,
+                "camera_name": Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}"),
+                "coverage_area": zone,
+                "rtsp_url": Config.RTSP_CAMERA_URLS.get(camera_id, ""),
+                "active": camera_id in Config.ACTIVE_CAMERAS
+            }
+        
+        return {
+            "success": True,
+            "warehouse_dimensions": {
+                "width_ft": Config.FULL_WAREHOUSE_WIDTH_FT,
+                "length_ft": Config.FULL_WAREHOUSE_LENGTH_FT
+            },
+            "coverage_zones": coverage_zones,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except ImportError:
+        # Fallback data
+        return {
+            "success": True,
+            "warehouse_dimensions": {
+                "width_ft": 180.0,
+                "length_ft": 90.0
+            },
+            "coverage_zones": {
+                i: {
+                    "camera_id": i,
+                    "camera_name": f"Camera {i}",
+                    "coverage_area": {"x_start": 0, "x_end": 30, "y_start": 0, "y_end": 30},
+                    "active": i == 7
+                } for i in range(1, 12)
+            },
+            "timestamp": datetime.now().isoformat()
+        }
 
 if __name__ == "__main__":
     print("🚀 Starting Live CV System API Server...")
