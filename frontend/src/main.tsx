@@ -113,9 +113,10 @@ const LiveWarehouse = () => {
         setObjects(data.objects || []);
         setError(null);
       } else {
-        throw new Error('Failed to fetch');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (err) {
+      console.error('❌ Fetch error:', err);
       setError('Connection failed');
       setObjects([]);
     } finally {
@@ -174,7 +175,7 @@ const LiveWarehouse = () => {
       fetchStats();
       fetchCameras();
       // Fetch warehouse config less frequently (every 30 seconds)
-    }, 3000);
+    }, 500);
 
     const configInterval = setInterval(fetchWarehouseConfig, 30000);
 
@@ -299,78 +300,80 @@ const LiveWarehouse = () => {
                       ))}
                     </div>
 
-                    {/* Camera 8 coverage zone overlay - AT FAR END OF WAREHOUSE */}
-                    <div
-                      className="absolute border-2 border-green-400 bg-green-400 bg-opacity-10 rounded"
-                      style={{
-                        left: `${(0 / 180) * 100}%`, // Camera 8: x_start = 0ft
-                        top: `${(60 / 90) * 100}%`,  // Camera 8: y_start = 60ft (far end)
-                        width: `${(45 / 180) * 100}%`, // Camera 8: width = 45ft
-                        height: `${(30 / 90) * 100}%`, // Camera 8: height = 30ft (90-60)
-                      }}
-                    >
-                      <div className="absolute top-1 left-1 text-xs text-green-300 font-semibold">
-                        Camera 8 Zone (Far End)
+                    {/* Camera zones - Phase 1: Column 3 active */}
+                    {[
+                      { id: 8, x_start: 120, x_end: 180, y_start: 0, y_end: 25, active: true },
+                      { id: 9, x_start: 120, x_end: 180, y_start: 25, y_end: 50, active: true },
+                      { id: 10, x_start: 120, x_end: 180, y_start: 50, y_end: 75, active: true },
+                      { id: 11, x_start: 120, x_end: 180, y_start: 75, y_end: 90, active: true },
+                      // Standby cameras
+                      { id: 5, x_start: 60, x_end: 120, y_start: 0, y_end: 22.5, active: false },
+                      { id: 6, x_start: 60, x_end: 120, y_start: 22.5, y_end: 45, active: false },
+                      { id: 7, x_start: 60, x_end: 120, y_start: 45, y_end: 67.5, active: false },
+                      { id: 1, x_start: 0, x_end: 60, y_start: 0, y_end: 22.5, active: false },
+                      { id: 2, x_start: 0, x_end: 60, y_start: 22.5, y_end: 45, active: false },
+                      { id: 3, x_start: 0, x_end: 60, y_start: 45, y_end: 67.5, active: false },
+                      { id: 4, x_start: 0, x_end: 60, y_start: 67.5, y_end: 90, active: false },
+                    ].map((zone) => (
+                      <div
+                        key={zone.id}
+                        className={`absolute border-2 ${
+                          zone.active
+                            ? 'border-green-400 bg-green-400 bg-opacity-15'
+                            : 'border-gray-400 bg-gray-400 bg-opacity-10'
+                        }`}
+                        style={{
+                          left: `${((180 - zone.x_end) / 180) * 100}%`, // Flipped mapping
+                          top: `${(zone.y_start / 90) * 100}%`,
+                          width: `${((zone.x_end - zone.x_start) / 180) * 100}%`,
+                          height: `${((zone.y_end - zone.y_start) / 90) * 100}%`,
+                        }}
+                        title={`Camera ${zone.id} - ${zone.x_start}-${zone.x_end}ft × ${zone.y_start}-${zone.y_end}ft`}
+                      >
+                        <div className={`absolute top-1 left-1 text-xs px-1.5 py-0.5 rounded font-bold ${
+                          zone.active
+                            ? 'bg-green-600 text-white'
+                            : 'bg-gray-600 text-white'
+                        }`}>
+                          {zone.id}
+                        </div>
+                        {zone.active && (
+                          <div className="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse">
+                            <div className="absolute inset-0 bg-green-400 rounded-full animate-ping"></div>
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    ))}
 
-                    {/* Objects with Real Bounding Boxes */}
+                    {/* Objects as Simple Points */}
                     {objects.map((obj) => {
-                      if (!obj.real_center || !obj.bbox) return null;
+                      // Use real_center_x and real_center_y if available, fallback to real_center array
+                      const globalX = obj.real_center_x !== undefined ? obj.real_center_x : (obj.real_center ? obj.real_center[0] : 0);
+                      const globalY = obj.real_center_y !== undefined ? obj.real_center_y : (obj.real_center ? obj.real_center[1] : 0);
 
-                      // CV system already returns global warehouse coordinates for Camera 8
-                      // Camera 8 local coordinates (0-45ft, 0-30ft) are transformed to global (0-45ft, 50-80ft)
-                      const globalX = obj.real_center[0]; // Global X coordinate (0-45ft range)
-                      const globalY = obj.real_center[1]; // Global Y coordinate (50-80ft range) - NO OFFSET NEEDED
+                      if (globalX === 0 && globalY === 0) return null;
 
-                      // Convert to percentage of full warehouse dimensions
-                      const centerX = (globalX / 180) * 100; // Position within 180ft warehouse width
-                      const centerY = (globalY / 90) * 100;  // Position within 90ft warehouse length
-
-                      // Calculate bounding box dimensions based on Camera 8's coverage
-                      const bboxWidth = obj.bbox[2] - obj.bbox[0]; // pixel width
-                      const bboxHeight = obj.bbox[3] - obj.bbox[1]; // pixel height
-
-                      // Scale bbox relative to Camera 8's coverage area (45ft × 30ft), not full warehouse
-                      const realWidth = (bboxWidth / 640) * 45; // Scale to Camera 8's 45ft width
-                      const realHeight = (bboxHeight / 480) * 30; // Scale to Camera 8's 30ft height
-
-                      // Convert real dimensions to percentage of full warehouse display
-                      const displayWidth = (realWidth / 180) * 100; // Relative to full 180ft width
-                      const displayHeight = (realHeight / 90) * 100; // Relative to full 90ft height
+                      // Convert to percentage of warehouse dimensions for display
+                      // FIXED: Flipped mapping so Camera 8 (120-180ft) appears on YOUR LEFT side
+                      const centerX = ((180 - globalX) / 180) * 100; // Flipped: Camera 8 → low % → LEFT side
+                      const centerY = (globalY / 90) * 100;  // Y-axis: top-to-bottom
 
                       return (
                         <div
                           key={obj.persistent_id}
-                          className="absolute"
+                          className="absolute transform -translate-x-1/2 -translate-y-1/2"
                           style={{
-                            left: `${centerX - displayWidth/2}%`,
-                            top: `${centerY - displayHeight/2}%`,
-                            width: `${displayWidth}%`,
-                            height: `${displayHeight}%`
+                            left: `${centerX}%`,
+                            top: `${centerY}%`,
+                            zIndex: 10
                           }}
                         >
-                          {/* Bounding Box */}
-                          <div className="w-full h-full border-2 border-blue-400 bg-blue-400 bg-opacity-20 rounded-sm shadow-lg animate-pulse">
-                            {/* Center dot */}
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-blue-600 rounded-full"></div>
-                          </div>
+                          {/* Small Brown Box */}
+                          <div className="w-6 h-6 bg-amber-600 bg-opacity-60 border-2 border-white shadow-lg"></div>
 
-                          {/* Object Label */}
-                          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 px-2 py-1 rounded text-white font-medium text-xs whitespace-nowrap">
-                            ID: {obj.persistent_id}
-                          </div>
-
-                          {/* Coordinate and Size Info - Show actual global coordinates */}
-                          <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-80 whitespace-nowrap">
-                            ({globalX.toFixed(1)}ft, {globalY.toFixed(1)}ft)
-                            <br />
-                            {realWidth.toFixed(1)}×{realHeight.toFixed(1)}ft
-                          </div>
-
-                          {/* Confidence indicator */}
-                          <div className="absolute top-0 right-0 bg-green-600 text-white text-xs px-1 py-0.5 rounded-bl">
-                            {(obj.confidence * 100).toFixed(0)}%
+                          {/* Object Info Tooltip */}
+                          <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs whitespace-nowrap opacity-90">
+                            ID: {obj.persistent_id} | ({globalX.toFixed(1)}, {globalY.toFixed(1)})ft
                           </div>
                         </div>
                       );
@@ -390,15 +393,7 @@ const LiveWarehouse = () => {
                       </div>
                     )}
 
-                    {/* Loading state */}
-                    {loading && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="text-center text-gray-400">
-                          <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                          <div>Connecting to CV System...</div>
-                        </div>
-                      </div>
-                    )}
+
                   </div>
 
                   {/* Labels - Real warehouse dimensions */}

@@ -11,15 +11,15 @@
     "lens_mm": 2.8
   },
   "warehouse_dimensions": {
-    "width_feet": 45.0,
-    "length_feet": 30.0,
-    "width_meters": 13.716,
-    "length_meters": 9.144,
+    "width_feet": 60.0,
+    "length_feet": 25.0,
+    "width_meters": 18.288,
+    "length_meters": 7.62,
     "coverage_zone": {
       "x_start_ft": 0,
-      "x_end_ft": 45,
-      "y_start_ft": 60,
-      "y_end_ft": 90
+      "x_end_ft": 60,
+      "y_start_ft": 0,
+      "y_end_ft": 25
     }
   },
   "image_corners": [
@@ -46,22 +46,22 @@
       0
     ],
     [
-      45.0,
+      60.0,
       0
     ],
     [
-      45.0,
-      30.0
+      60.0,
+      25.0
     ],
     [
       0,
-      30.0
+      25.0
     ]
   ],
   "calibration_info": {
     "corner_order": "top-left, top-right, bottom-right, bottom-left",
     "coordinate_system": "origin at top-left, x-axis right, y-axis down",
     "units": "feet",
-    "notes": "Calibrated for Camera 8 coverage zone (45ft x 30ft area) - FAR END position (60-90ft in global warehouse)"
+    "notes": "Calibrated for Camera 8 coverage zone (60ft x 25ft area) - TOP LEFT position (0-60ft x 0-25ft in global warehouse)"
   }
 }

@@ -8,7 +8,7 @@ import pymongo
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from config import Config
+from configs.config import Config
 import logging
 
 # Set up logging

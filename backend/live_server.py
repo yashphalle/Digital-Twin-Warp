@@ -22,7 +22,7 @@ app = FastAPI(title="Live Warehouse Tracking API")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -186,14 +186,9 @@ class CameraManager:
                         cv2.putText(frame, zone_text, (50, 170),
                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
-                    # Add animated timestamp
-                    timestamp = datetime.now().strftime("%H:%M:%S")
-                    cv2.putText(frame, timestamp, (50, 220),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                    # Timestamp removed for cleaner display
 
-                    # Add frame counter
-                    cv2.putText(frame, f"Frame: {frame_count}", (50, 250),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                    # Frame counter removed for cleaner display
 
                     # Add animated element based on camera ID
                     center_x = 320 + int(50 * np.cos(frame_count * 0.1 + camera_id))
@@ -231,7 +226,7 @@ async def root():
     return {
         "message": "Live Warehouse Tracking API", 
         "status": "running",
-        "database": "connected" if tracking_collection else "disconnected",
+        "database": "connected" if tracking_collection is not None else "disconnected",
         "cv_system": "live"
     }
 
@@ -336,7 +331,7 @@ async def get_warehouse_config():
             "../cv/warehouse_calibration.json",
             "../../cv/warehouse_calibration.json",
             "../warehouse_calibration.json",
-            "warehouse_calibration.json"
+            "configs/warehouse_calibration.json"
         ]
         
         for path in calibration_paths:

@@ -12,7 +12,7 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional, Any
-from config import Config
+from configs.config import Config
 import logging
 import json
 
@@ -31,33 +31,35 @@ class CoordinateMapper:
         self.homography_matrix = None
         self.is_calibrated = False
         
-        # Camera 8 coordinate transformation: Local (0-45ft, 0-30ft) -> Global (0-45ft, 60-90ft)
-        # Camera 8 is at the FAR END of warehouse looking down the length
-        self.camera_coverage_zones = {
-            8: {"x_offset": 0, "y_offset": 60}  # Camera 8: X stays same, Y + 60ft offset (at far end)
-        }
+        # Column 3 cameras (8,9,10,11) use direct global coordinate mapping
+        # Calibration files map directly to warehouse coordinates - no offset transformation needed
+        # This will be expanded for other columns when they are activated
         
         logger.info(f"Coordinate mapper initialized - Floor: {floor_width:.1f}ft x {floor_length:.1f}ft")
         if camera_id:
             logger.info(f"Camera ID: {camera_id}")
-            if camera_id in self.camera_coverage_zones:
-                zone = self.camera_coverage_zones[camera_id]
-                logger.info(f"Camera {camera_id} coordinate transform: Local(0-{floor_width}ft, 0-{floor_length}ft) -> Global({zone['x_offset']}-{zone['x_offset']+floor_width}ft, {zone['y_offset']}-{zone['y_offset']+floor_length}ft)")
+            logger.info(f"Camera {camera_id}: Using direct global coordinate mapping")
 
-    def load_calibration(self, filename="warehouse_calibration.json"):
+    def load_calibration(self, filename="configs/warehouse_calibration.json"):
         """Load calibration from JSON file"""
         try:
             with open(filename, 'r') as file:
                 calibration_data = json.load(file)
             
-            # Extract warehouse dimensions (prioritize feet)
-            warehouse_dims = calibration_data.get('warehouse_dimensions', {})
-            self.floor_width_ft = warehouse_dims.get('width_feet', 45.0)
-            self.floor_length_ft = warehouse_dims.get('length_feet', 30.0)
-            
-            # Extract corners
-            image_corners = np.array(calibration_data['image_corners'], dtype=np.float32)
+            # Extract warehouse dimensions from real_world_corners for global coordinate mapping
+            # Calculate actual coverage area from the real_world_corners
             real_world_corners = np.array(calibration_data['real_world_corners'], dtype=np.float32)
+
+            # Calculate width and height from corners (assuming rectangular area)
+            # Corners are: top-left, top-right, bottom-right, bottom-left
+            width_ft = abs(real_world_corners[1][0] - real_world_corners[0][0])  # top-right X - top-left X
+            height_ft = abs(real_world_corners[2][1] - real_world_corners[1][1])  # bottom-right Y - top-right Y
+
+            self.floor_width_ft = width_ft
+            self.floor_length_ft = height_ft
+            
+            # Extract image corners
+            image_corners = np.array(calibration_data['image_corners'], dtype=np.float32)
             
             # Check units and convert if necessary
             units = calibration_data.get('calibration_info', {}).get('units', 'feet')
@@ -73,9 +75,12 @@ class CoordinateMapper:
             logger.info(f"Coordinate calibration loaded from: {filename}")
             logger.info(f"Camera local area: {self.floor_width_ft:.1f}ft x {self.floor_length_ft:.1f}ft")
             
-            # Log the coordinate transformation for Camera 8
-            if self.camera_id == 8:
-                logger.info(f"Camera 8 coordinate mapping: Local(0-45ft, 0-30ft) -> Global(0-45ft, 60-90ft)")
+            # Log the coordinate transformation for Column 3 cameras
+            if self.camera_id in [8, 9, 10, 11]:
+                zone_info = Config.CAMERA_COVERAGE_ZONES.get(self.camera_id, {})
+                x_range = f"{zone_info.get('x_start', 0)}-{zone_info.get('x_end', 0)}ft"
+                y_range = f"{zone_info.get('y_start', 0)}-{zone_info.get('y_end', 0)}ft"
+                logger.info(f"Camera {self.camera_id} coordinate mapping: Direct mapping to global ({x_range}, {y_range})")
             
             logger.info(f"Coordinate mapper initialized - Calibrated: {self.is_calibrated}")
             
@@ -97,20 +102,15 @@ class CoordinateMapper:
             pixel_point = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
             real_point = cv2.perspectiveTransform(pixel_point, self.homography_matrix)
             
-            # Extract local coordinates (in feet)
-            local_x = float(real_point[0][0][0])
-            local_y = float(real_point[0][0][1])
-            
-            # Apply warehouse offset based on camera coverage zone
-            if self.camera_id and self.camera_id in self.camera_coverage_zones:
-                zone = self.camera_coverage_zones[self.camera_id]
-                warehouse_x = local_x + zone["x_offset"]
-                warehouse_y = local_y + zone["y_offset"]
-            else:
-                warehouse_x = local_x
-                warehouse_y = local_y
-            
-            return warehouse_x, warehouse_y
+            # Extract global coordinates (in feet) - calibration files now use direct global mapping
+            global_x = float(real_point[0][0][0])
+            global_y = float(real_point[0][0][1])
+
+            # For Column 3 cameras (8,9,10,11), coordinates are already global
+            # No offset transformation needed since calibration files map directly to global coordinates
+            logger.debug(f"Camera {self.camera_id}: Pixel ({pixel_x}, {pixel_y}) → Global ({global_x:.1f}ft, {global_y:.1f}ft)")
+
+            return global_x, global_y
         
         except Exception as e:
             logger.error(f"Error in pixel_to_real conversion: {e}")
@@ -122,17 +122,9 @@ class CoordinateMapper:
             return None, None
         
         try:
-            # Remove warehouse offset to get local coordinates
-            if self.camera_id and self.camera_id in self.camera_coverage_zones:
-                zone = self.camera_coverage_zones[self.camera_id]
-                local_x = real_x - zone["x_offset"]
-                local_y = real_y - zone["y_offset"]
-            else:
-                local_x = real_x
-                local_y = real_y
-            
-            # Apply inverse homography transformation
-            real_point = np.array([[[local_x, local_y]]], dtype=np.float32)
+            # For Column 3 cameras (8,9,10,11), coordinates are already global
+            # Apply inverse homography transformation directly (no offset removal needed)
+            real_point = np.array([[[real_x, real_y]]], dtype=np.float32)
             pixel_point = cv2.perspectiveTransform(real_point, np.linalg.inv(self.homography_matrix))
             
             pixel_x = int(pixel_point[0][0][0])
@@ -354,7 +346,8 @@ class DetectorTracker:
             self.coordinate_mapper.camera_coverage_zone = None
             
         # Load calibration after setting camera ID
-        self.coordinate_mapper.load_calibration()
+        calibration_file = f"configs/warehouse_calibration_camera_{camera_id}.json"
+        self.coordinate_mapper.load_calibration(calibration_file)
 
     def setup_gpu(self, force_gpu: bool = True):
         """Setup GPU configuration"""

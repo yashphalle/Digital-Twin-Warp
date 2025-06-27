@@ -41,11 +41,11 @@ const MultiCameraWarehouseView: React.FC = () => {
     { camera_id: 6, camera_name: "Camera 6 - Middle Center", x_start: 45, x_end: 105, y_start: 25, y_end: 55, active: false },
     { camera_id: 7, camera_name: "Camera 7 - Middle Right", x_start: 90, x_end: 150, y_start: 25, y_end: 55, active: false },
     
-    // Row 3 (Back) - 4 cameras
-    { camera_id: 8, camera_name: "Camera 8 - Back Left", x_start: 0, x_end: 45, y_start: 50, y_end: 80, active: true }, // Currently active
-    { camera_id: 9, camera_name: "Camera 9 - Back Center-Left", x_start: 35, x_end: 80, y_start: 50, y_end: 80, active: false },
-    { camera_id: 10, camera_name: "Camera 10 - Back Center-Right", x_start: 70, x_end: 115, y_start: 50, y_end: 80, active: false },
-    { camera_id: 11, camera_name: "Camera 11 - Back Right", x_start: 105, x_end: 150, y_start: 50, y_end: 80, active: false }
+    // Column 3 (Left) - 4 cameras - PHASE 1: All Column 3 cameras active
+    { camera_id: 8, camera_name: "Camera 8 - Column 3 Top", x_start: 120, x_end: 180, y_start: 0, y_end: 25, active: true },
+    { camera_id: 9, camera_name: "Camera 9 - Column 3 Mid-Top", x_start: 120, x_end: 180, y_start: 25, y_end: 50, active: true },
+    { camera_id: 10, camera_name: "Camera 10 - Column 3 Mid-Bottom", x_start: 120, x_end: 180, y_start: 50, y_end: 75, active: true },
+    { camera_id: 11, camera_name: "Camera 11 - Column 3 Bottom", x_start: 120, x_end: 180, y_start: 75, y_end: 90, active: true }
   ];
 
   if (configLoading || objectsLoading) {
@@ -57,20 +57,22 @@ const MultiCameraWarehouseView: React.FC = () => {
   }
 
   // Convert feet to pixels for visualization (scale warehouse to fit screen)
-  const pixelsPerFoot = 4; // 4 pixels per foot
-  const warehousePixelWidth = warehouseConfig.width_ft * pixelsPerFoot; // 720px
-  const warehousePixelHeight = warehouseConfig.length_ft * pixelsPerFoot; // 360px
+  const pixelsPerFoot = 8; // 8 pixels per foot for better visibility
+  const warehousePixelWidth = warehouseConfig.width_ft * pixelsPerFoot; // 1440px
+  const warehousePixelHeight = warehouseConfig.length_ft * pixelsPerFoot; // 720px
 
   // Convert object coordinates (assuming they're already in feet)
   const convertToPixels = (object: any) => {
-    const x = (object.real_center_x || 0) * pixelsPerFoot;
-    const y = (object.real_center_y || 0) * pixelsPerFoot;
+    // FIXED: Flipped mapping so Camera 8 (120-180ft) appears on YOUR LEFT side
+    const x = (warehouseConfig.width_ft - (object.real_center?.[0] || 0)) * pixelsPerFoot; // Flipped mapping
+    const y = (object.real_center?.[1] || 0) * pixelsPerFoot; // Y-axis correct
     return { x, y };
   };
 
   const getCameraZoneStyle = (zone: CameraZone) => {
-    const x = zone.x_start * pixelsPerFoot;
-    const y = zone.y_start * pixelsPerFoot;
+    // FIXED: Flipped mapping so Camera 8 (120-180ft) appears on YOUR LEFT side
+    const x = (warehouseConfig.width_ft - zone.x_end) * pixelsPerFoot; // Flipped mapping
+    const y = zone.y_start * pixelsPerFoot; // Y-axis correct
     const width = (zone.x_end - zone.x_start) * pixelsPerFoot;
     const height = (zone.y_end - zone.y_start) * pixelsPerFoot;
 
@@ -99,25 +101,47 @@ const MultiCameraWarehouseView: React.FC = () => {
           <span>Objects: {objects?.length || 0}</span>
           <span>Warehouse: {warehouseConfig.width_ft}ft × {warehouseConfig.length_ft}ft</span>
           <span className="text-green-600">✓ 11-Camera System</span>
-          <span className="text-blue-600">Active: Camera 8</span>
+          <span className="text-green-600">Active: Cameras 8, 9, 10, 11 (Column 3)</span>
+          <span className="text-blue-600">📹 Camera zones visible</span>
+          {(objectsError || configError) && (
+            <span className="text-red-600">⚠ {objectsError || configError}</span>
+          )}
         </div>
         
         {/* Controls */}
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-4 items-center flex-wrap">
           <button
             onClick={() => setShowCameraZones(!showCameraZones)}
             className={`px-3 py-1 rounded text-sm transition-colors ${
-              showCameraZones 
-                ? 'bg-blue-500 text-white' 
+              showCameraZones
+                ? 'bg-blue-500 text-white'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
             {showCameraZones ? 'Hide' : 'Show'} Camera Zones
           </button>
-          
+
           <div className="text-sm text-gray-500">
             Click camera zones to view details
           </div>
+
+          {/* Camera zone legend */}
+          {showCameraZones && (
+            <div className="flex gap-4 items-center text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-green-500 rounded border"></div>
+                <span>Active Camera</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-gray-400 rounded border"></div>
+                <span>Standby Camera</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span>Live Feed</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -183,41 +207,150 @@ const MultiCameraWarehouseView: React.FC = () => {
                 key={zone.camera_id}
                 style={getCameraZoneStyle(zone)}
                 onClick={() => setSelectedCamera(selectedCamera === zone.camera_id ? null : zone.camera_id)}
-                className="hover:opacity-80"
-                title={zone.camera_name}
+                className={`absolute border-2 cursor-pointer transition-all duration-200 ${
+                  zone.active
+                    ? 'border-green-500 bg-green-100 bg-opacity-40 hover:bg-opacity-60'
+                    : 'border-gray-400 bg-gray-200 bg-opacity-30 hover:bg-opacity-50'
+                } ${selectedCamera === zone.camera_id ? 'ring-4 ring-blue-300' : ''}`}
+                title={`${zone.camera_name} - Click for details`}
               >
-                {/* Camera label */}
-                <div className={`absolute top-1 left-1 text-xs font-semibold px-2 py-1 rounded ${
-                  zone.active 
-                    ? 'bg-green-500 text-white' 
-                    : 'bg-gray-500 text-white'
+                {/* Camera ID badge */}
+                <div className={`absolute top-2 left-2 text-sm font-bold px-2 py-1 rounded-full shadow-sm ${
+                  zone.active
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-600 text-white'
                 }`}>
-                  C{zone.camera_id}
+                  {zone.camera_id}
                 </div>
-                
-                {/* Coverage area indicator */}
-                <div className="absolute bottom-1 right-1 text-xs text-gray-600">
-                  {zone.x_end - zone.x_start}×{zone.y_end - zone.y_start}ft
+
+                {/* Active indicator */}
+                {zone.active && (
+                  <div className="absolute top-2 right-2 w-3 h-3 bg-green-400 rounded-full animate-pulse shadow-sm">
+                    <div className="absolute inset-0 bg-green-400 rounded-full animate-ping"></div>
+                  </div>
+                )}
+
+                {/* Camera name */}
+                <div className="absolute bottom-2 left-2 text-xs bg-black bg-opacity-75 text-white px-2 py-1 rounded shadow-sm max-w-full truncate">
+                  {zone.camera_name.replace('Camera ', 'Cam ').replace(' - Column', ' Col')}
                 </div>
+
+                {/* Coverage coordinates */}
+                <div className="absolute bottom-2 right-2 text-xs bg-black bg-opacity-75 text-white px-2 py-1 rounded shadow-sm">
+                  {zone.x_start}-{zone.x_end}×{zone.y_start}-{zone.y_end}ft
+                </div>
+
+                {/* Center crosshair for active cameras */}
+                {zone.active && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-4 h-4 border-2 border-green-600 rounded-full bg-white bg-opacity-80">
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-1 h-1 bg-green-600 rounded-full"></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Selected camera details overlay */}
+                {selectedCamera === zone.camera_id && (
+                  <div className="absolute inset-0 bg-blue-500 bg-opacity-20 border-2 border-blue-500 rounded flex items-center justify-center">
+                    <div className="bg-white bg-opacity-95 p-3 rounded shadow-lg text-xs max-w-full">
+                      <div className="font-bold text-gray-800">{zone.camera_name}</div>
+                      <div className="text-gray-600 mt-1">
+                        Coverage: {zone.x_start}-{zone.x_end}ft × {zone.y_start}-{zone.y_end}ft
+                      </div>
+                      <div className="text-gray-600">
+                        Size: {zone.x_end - zone.x_start}ft × {zone.y_end - zone.y_start}ft
+                      </div>
+                      <div className={`mt-1 font-medium ${zone.active ? 'text-green-600' : 'text-gray-500'}`}>
+                        Status: {zone.active ? '🟢 Active' : '⚪ Standby'}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
 
-            {/* Object markers */}
+            {/* Object markers - TEST BOXES */}
             {objects && objects.map((object) => {
               const pixelPos = convertToPixels(object);
+              
+              console.log('=== OBJECT DEBUG ===');
+              console.log('Object:', object);
+              console.log('Pixel position:', pixelPos);
+              console.log('Pixels per foot:', pixelsPerFoot);
+              
               return (
                 <div
                   key={object.persistent_id}
-                  className="absolute w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-lg transform -translate-x-1/2 -translate-y-1/2"
                   style={{
+                    position: 'absolute',
                     left: `${pixelPos.x}px`,
                     top: `${pixelPos.y}px`,
-                    zIndex: 10
+                    width: '100px',
+                    height: '80px',
+                    backgroundColor: '#ff0000',
+                    border: '4px solid #000000',
+                    zIndex: 10,
+                    transform: 'translate(-50%, -50%)'
                   }}
-                  title={`Object ${object.persistent_id} - (${object.real_center_x?.toFixed(1) || 0}, ${object.real_center_y?.toFixed(1) || 0})ft`}
-                />
+                >
+                  <div style={{
+                    position: 'absolute',
+                    top: '-25px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: '#000000',
+                    color: '#ffffff',
+                    padding: '2px 6px',
+                    fontSize: '12px',
+                    borderRadius: '3px'
+                  }}>
+                    ID: {object.persistent_id}
+                  </div>
+                  
+                  <div style={{
+                    position: 'absolute',
+                    top: '2px',
+                    left: '2px',
+                    backgroundColor: '#000000',
+                    color: '#ffffff',
+                    padding: '1px 3px',
+                    fontSize: '10px'
+                  }}>
+                    100×80px
+                  </div>
+                </div>
               );
             })}
+            
+            {/* TEST BOX - Always visible regardless of data */}
+            <div
+              style={{
+                position: 'absolute',
+                left: '200px',
+                top: '100px',
+                width: '120px',
+                height: '80px',
+                backgroundColor: '#00ff00',
+                border: '4px solid #000000',
+                zIndex: 15
+              }}
+            >
+              <div style={{
+                position: 'absolute',
+                top: '-25px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: '#000000',
+                color: '#ffffff',
+                padding: '2px 6px',
+                fontSize: '12px',
+                borderRadius: '3px'
+              }}>
+                TEST BOX
+              </div>
+            </div>
 
             {/* Empty state */}
             {(!objects || objects.length === 0) && (
@@ -227,24 +360,24 @@ const MultiCameraWarehouseView: React.FC = () => {
                     No objects detected
                   </div>
                   <div className="text-sm">
-                    Objects from Camera 7 will appear here when detected
+                    Objects from Camera 8 will appear here when detected
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Coordinate indicators */}
-          <div className="absolute -bottom-6 left-0 text-xs text-gray-500">
-            (0ft, 0ft)
-          </div>
-          <div className="absolute -bottom-6 right-0 text-xs text-gray-500">
-            ({warehouseConfig.width_ft}ft, 0ft)
+          {/* Coordinate indicators - NEW COORDINATE SYSTEM (Origin: Top-Right) */}
+          <div className="absolute -top-4 right-0 text-xs text-gray-500 font-semibold">
+            (0ft, 0ft) ← ORIGIN
           </div>
           <div className="absolute -top-4 left-0 text-xs text-gray-500">
+            ({warehouseConfig.width_ft}ft, 0ft)
+          </div>
+          <div className="absolute -bottom-6 right-0 text-xs text-gray-500">
             (0ft, {warehouseConfig.length_ft}ft)
           </div>
-          <div className="absolute -top-4 right-0 text-xs text-gray-500">
+          <div className="absolute -bottom-6 left-0 text-xs text-gray-500">
             ({warehouseConfig.width_ft}ft, {warehouseConfig.length_ft}ft)
           </div>
         </div>
@@ -321,8 +454,22 @@ const MultiCameraWarehouseView: React.FC = () => {
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white"></div>
-                <span>Tracked Object</span>
+                <div className="w-8 h-6 border-2 border-orange-500 bg-orange-200/40 relative">
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <div className="w-0.5 h-2 bg-orange-600"></div>
+                    <div className="w-2 h-0.5 bg-orange-600 absolute top-0.5 -left-0.5"></div>
+                  </div>
+                </div>
+                <span>Pallet (≥4×4ft) 📦</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-4 border-2 border-red-500 bg-red-200/40 relative">
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <div className="w-0.5 h-2 bg-red-600"></div>
+                    <div className="w-2 h-0.5 bg-red-600 absolute top-0.5 -left-0.5"></div>
+                  </div>
+                </div>
+                <span>Package (&lt;4×4ft) 📋</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 border border-gray-400 bg-gray-50"></div>

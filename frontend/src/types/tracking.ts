@@ -4,10 +4,7 @@ export interface TrackedObject {
     x: number;
     y: number;
   };
-  real_center?: {
-    x: number;
-    y: number;
-  };
+  real_center?: [number, number] | null;
   bbox: [number, number, number, number]; // [xmin, ymin, xmax, ymax]
   confidence: number;
   age_seconds: number;

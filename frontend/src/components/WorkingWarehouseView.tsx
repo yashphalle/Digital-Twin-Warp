@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 interface TrackedObject {
   persistent_id: number;
   center: { x: number; y: number };
-  real_center?: { x: number; y: number };
+  real_center?: [number, number] | null;
   confidence: number;
   age_seconds: number;
   times_seen: number;
@@ -27,6 +27,23 @@ const WorkingWarehouseView: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCameraZones, setShowCameraZones] = useState(true);
+
+  // Camera zones for Phase 1 (Column 3 active)
+  const cameraZones = [
+    { id: 8, name: "Camera 8", x_start: 120, x_end: 180, y_start: 0, y_end: 25, active: true },
+    { id: 9, name: "Camera 9", x_start: 120, x_end: 180, y_start: 25, y_end: 50, active: true },
+    { id: 10, name: "Camera 10", x_start: 120, x_end: 180, y_start: 50, y_end: 75, active: true },
+    { id: 11, name: "Camera 11", x_start: 120, x_end: 180, y_start: 75, y_end: 90, active: true },
+    // Standby cameras
+    { id: 5, name: "Camera 5", x_start: 60, x_end: 120, y_start: 0, y_end: 22.5, active: false },
+    { id: 6, name: "Camera 6", x_start: 60, x_end: 120, y_start: 22.5, y_end: 45, active: false },
+    { id: 7, name: "Camera 7", x_start: 60, x_end: 120, y_start: 45, y_end: 67.5, active: false },
+    { id: 1, name: "Camera 1", x_start: 0, x_end: 60, y_start: 0, y_end: 22.5, active: false },
+    { id: 2, name: "Camera 2", x_start: 0, x_end: 60, y_start: 22.5, y_end: 45, active: false },
+    { id: 3, name: "Camera 3", x_start: 0, x_end: 60, y_start: 45, y_end: 67.5, active: false },
+    { id: 4, name: "Camera 4", x_start: 0, x_end: 60, y_start: 67.5, y_end: 90, active: false },
+  ];
 
   const fetchObjects = async () => {
     try {
@@ -104,6 +121,16 @@ const WorkingWarehouseView: React.FC = () => {
             <div className="bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600">
               <span className="text-xs text-green-400 font-medium">🔗 MongoDB</span>
             </div>
+            <button
+              onClick={() => setShowCameraZones(!showCameraZones)}
+              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                showCameraZones
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              📹 {showCameraZones ? 'Hide' : 'Show'} Zones
+            </button>
           </div>
         </div>
         <div className="flex gap-6 text-sm text-gray-400">
@@ -173,15 +200,67 @@ const WorkingWarehouseView: React.FC = () => {
             <div className="absolute bottom-2 left-2 w-3 h-3 border-l-2 border-b-2 border-gray-400 opacity-60"></div>
             <div className="absolute bottom-2 right-2 w-3 h-3 border-r-2 border-b-2 border-gray-400 opacity-60"></div>
 
+            {/* Camera zones */}
+            {showCameraZones && cameraZones.map((zone) => {
+              const warehouseWidthFt = config.width_feet || config.width_meters * 3.28084;
+              const warehouseLengthFt = config.length_feet || config.length_meters * 3.28084;
+
+              // Calculate zone position and size - FIXED: Flipped mapping
+              const x = ((warehouseWidthFt - zone.x_end) / warehouseWidthFt) * 100; // Flipped mapping
+              const y = (zone.y_start / warehouseLengthFt) * 100;
+              const width = ((zone.x_end - zone.x_start) / warehouseWidthFt) * 100;
+              const height = ((zone.y_end - zone.y_start) / warehouseLengthFt) * 100;
+
+              return (
+                <div
+                  key={zone.id}
+                  className={`absolute border-2 transition-all duration-200 ${
+                    zone.active
+                      ? 'border-green-400 bg-green-500 bg-opacity-20 hover:bg-opacity-30'
+                      : 'border-gray-500 bg-gray-600 bg-opacity-15 hover:bg-opacity-25'
+                  }`}
+                  style={{
+                    left: `${x}%`,
+                    top: `${y}%`,
+                    width: `${width}%`,
+                    height: `${height}%`
+                  }}
+                  title={`${zone.name} - ${zone.x_start}-${zone.x_end}ft × ${zone.y_start}-${zone.y_end}ft`}
+                >
+                  {/* Camera ID badge */}
+                  <div className={`absolute top-1 left-1 text-xs font-bold px-1.5 py-0.5 rounded ${
+                    zone.active
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-600 text-white'
+                  }`}>
+                    {zone.id}
+                  </div>
+
+                  {/* Active indicator */}
+                  {zone.active && (
+                    <div className="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse">
+                      <div className="absolute inset-0 bg-green-400 rounded-full animate-ping"></div>
+                    </div>
+                  )}
+
+                  {/* Zone coordinates */}
+                  <div className="absolute bottom-1 right-1 text-xs bg-black bg-opacity-75 text-white px-1 py-0.5 rounded">
+                    {zone.x_start}-{zone.x_end}×{zone.y_start}-{zone.y_end}ft
+                  </div>
+                </div>
+              );
+            })}
+
             {/* Modern object markers */}
             {objects.map((object) => {
-              if (!object.real_center) return null;
+              if (!object.real_center || !Array.isArray(object.real_center) || object.real_center.length < 2) return null;
 
               const warehouseWidthFt = config.width_feet || config.width_meters * 3.28084;
               const warehouseLengthFt = config.length_feet || config.length_meters * 3.28084;
-              
-              const x = (object.real_center.x / warehouseWidthFt) * 100;
-              const y = (object.real_center.y / warehouseLengthFt) * 100;
+
+              // FIXED: Flipped mapping so Camera 8 (120-180ft) appears on YOUR LEFT side
+              const x = ((warehouseWidthFt - object.real_center[0]) / warehouseWidthFt) * 100; // Flipped mapping
+              const y = (object.real_center[1] / warehouseLengthFt) * 100; // Y-axis correct
               const color = getStatusColor(object.status, object.age_seconds);
 
               return (
@@ -229,7 +308,7 @@ const WorkingWarehouseView: React.FC = () => {
                       </div>
                       <div className="flex justify-between gap-3">
                         <span className="text-gray-400">Position:</span>
-                        <span className="text-blue-400">({object.real_center.x.toFixed(1)}ft, {object.real_center.y.toFixed(1)}ft)</span>
+                        <span className="text-blue-400">({object.real_center[0].toFixed(1)}ft, {object.real_center[1].toFixed(1)}ft)</span>
                       </div>
                     </div>
                     {/* Tooltip arrow */}
@@ -262,18 +341,18 @@ const WorkingWarehouseView: React.FC = () => {
             )}
           </div>
 
-          {/* Modern coordinate indicators */}
+          {/* Coordinate indicators - FIXED for flipped mapping */}
           <div className="absolute -bottom-8 left-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            (0, 0)
+            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
           </div>
           <div className="absolute -bottom-8 right-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, 0)
-          </div>
-          <div className="absolute -top-8 left-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
             (0, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
           </div>
+          <div className="absolute -top-8 left-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
+            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, 0)
+          </div>
           <div className="absolute -top-8 right-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
+            (0, 0) - Origin
           </div>
         </div>
       </div>

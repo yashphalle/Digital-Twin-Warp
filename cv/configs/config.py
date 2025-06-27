@@ -204,8 +204,8 @@ class Config:
     LABEL_FONT = 0  # cv2.FONT_HERSHEY_SIMPLEX (imported in detector_tracker.py)
     LABEL_FONT_SCALE = 0.5
     LABEL_THICKNESS = 2
-    REAL_COORD_FONT_SCALE = 0.4
-    REAL_COORD_THICKNESS = 1
+    REAL_COORD_FONT_SCALE = 1.2  # Increased from 0.8 for better visibility
+    REAL_COORD_THICKNESS = 2  # Increased from 1 for better visibility
     REAL_COORD_COLOR = (255, 255, 0)   # Yellow for real coordinates
 
     # Zone overlay settings
@@ -279,43 +279,56 @@ class Config:
     ALERT_HIGH_MEMORY_USAGE = 85       # percentage
     
     # ==================== MULTI-CAMERA RTSP SETTINGS ====================
-    # Full 11-camera warehouse configuration
+    # Full 11-camera warehouse configuration - NOW MANAGED BY warehouse_config.py
     ENABLE_MULTI_CAMERA_SYSTEM = True
-    ACTIVE_CAMERAS = [8]  # Only process Camera 8 for now (can enable all [1,2,3,4,5,6,7,8,9,10,11])
+
+    # Import warehouse configuration
+    try:
+        from configs.warehouse_config import get_warehouse_config, get_active_cameras
+        _warehouse_config = get_warehouse_config()
+        ACTIVE_CAMERAS = get_active_cameras()  # Dynamic from warehouse config
+    except ImportError:
+        # Fallback for Phase 1
+        ACTIVE_CAMERAS = [8, 9, 10, 11]  # PHASE 1: Activate entire Column 3 (left column)
     
-    # Lorex RTSP Camera URLs (11 cameras total: 4-3-4 layout)
+    # Lorex RTSP Camera URLs (11 cameras total) - UPDATED FROM DEVICE LIST
     RTSP_CAMERA_URLS = {
         # Row 1 (Front) - 4 cameras
-        1: "rtsp://admin:wearewarp!@192.168.0.71:554/Streaming/channels/1",  # Front Left
-        2: "rtsp://admin:wearewarp!@192.168.0.72:554/Streaming/channels/1",  # Front Center-Left
-        3: "rtsp://admin:wearewarp!@192.168.0.73:554/Streaming/channels/1",  # Front Center-Right
-        4: "rtsp://admin:wearewarp!@192.168.0.74:554/Streaming/channels/1",  # Front Right
-        
-        # Row 2 (Middle) - 3 cameras  
-        5: "rtsp://admin:wearewarp!@192.168.0.75:554/Streaming/channels/1",  # Middle Left
-        6: "rtsp://admin:wearewarp!@192.168.0.76:554/Streaming/channels/1",  # Middle Center
-        7: "rtsp://admin:wearewarp!@192.168.0.77:554/Streaming/channels/1",  # Middle Right
-        
+        1: "rtsp://admin:wearewarp!@192.168.0.81:554/Streaming/channels/1",  # Cam 1 Front Right ✅ FIXED
+        2: "rtsp://admin:wearewarp!@192.168.0.85:554/Streaming/channels/1",  # Cam 2 Front Middle 1 ✅
+        3: "rtsp://admin:wearewarp!@192.168.0.83:554/Streaming/channels/1",  # Cam 3 Front Left ✅ FIXED
+        4: "rtsp://admin:wearewarp!@192.168.0.84:554/Streaming/channels/1",  # Cam 4 Front Bottom ✅ FIXED
+
+        # Row 2 (Middle) - 3 cameras
+        5: "rtsp://admin:wearewarp!@192.168.0.77:554/Streaming/channels/1",  # Cam 5 Mid Right ✅
+        6: "rtsp://admin:wearewarp!@192.168.0.106:554/Streaming/channels/1", # Cam 6 Middle Middle ✅ FIXED
+        7: "rtsp://admin:wearewarp!@192.168.0.79:554/Streaming/channels/1",  # Cam 7 Middle Left ✅
+
         # Row 3 (Back) - 4 cameras - These are at the FAR END of warehouse
-        8: "rtsp://admin:wearewarp!@192.168.0.79:554/Streaming/channels/1",  # Back Left - ACTIVE (at far end)
-        9: "rtsp://admin:wearewarp!@192.168.0.80:554/Streaming/channels/1",  # Back Center-Left
-        10: "rtsp://admin:wearewarp!@192.168.0.81:554/Streaming/channels/1", # Back Center-Right
-        11: "rtsp://admin:wearewarp!@192.168.0.82:554/Streaming/channels/1"  # Back Right
+        8: "rtsp://admin:wearewarp!@192.168.0.79:554/Streaming/channels/1",  # Cam 8 Back Right ✅
+        9: "rtsp://admin:wearewarp!@192.168.0.80:554/Streaming/channels/1",  # Cam 9 Back Middle 1 ✅
+        10: "rtsp://admin:wearewarp!@192.168.0.80:554/Streaming/channels/1", # Cam 10 Back Middle 2 ✅
+        11: "rtsp://admin:wearewarp!@192.168.0.64:554/Streaming/channels/1"  # Cam 11 Back Left ✅
     }
     
-    # Camera names for identification (4-3-4 layout)
+    # Camera names for identification - NEW LAYOUT (3-Column, Origin Top-Right)
     CAMERA_NAMES = {
-        1: "Camera 1 - Front Left",
-        2: "Camera 2 - Front Center-Left", 
-        3: "Camera 3 - Front Center-Right",
-        4: "Camera 4 - Front Right",
-        5: "Camera 5 - Middle Left",
-        6: "Camera 6 - Middle Center",
-        7: "Camera 7 - Middle Right",
-        8: "Camera 8 - Back Left",  # Currently active
-        9: "Camera 9 - Back Center-Left",
-        10: "Camera 10 - Back Center-Right",
-        11: "Camera 11 - Back Right"
+        # Column 1 (Rightmost) - Cameras 1-4 (top to bottom)
+        1: "Camera 1 - Column 1 Top",
+        2: "Camera 2 - Column 1 Mid-Top", 
+        3: "Camera 3 - Column 1 Mid-Bottom",
+        4: "Camera 4 - Column 1 Bottom",
+        
+        # Column 2 (Middle) - Cameras 5-7 + Office (top to bottom)
+        5: "Camera 5 - Column 2 Top",
+        6: "Camera 6 - Column 2 Mid-Top",
+        7: "Camera 7 - Column 2 Mid-Bottom",
+        
+        # Column 3 (Leftmost) - Cameras 8-11 (top to bottom)
+        8: "Camera 8 - Column 3 Top",  # Currently active for testing
+        9: "Camera 9 - Column 3 Mid-Top",
+        10: "Camera 10 - Column 3 Mid-Bottom",
+        11: "Camera 11 - Column 3 Bottom"
     }
     
     # Full warehouse dimensions (from user diagram)
@@ -324,24 +337,27 @@ class Config:
     FULL_WAREHOUSE_WIDTH_M = 180.0 * 0.3048   # Convert to meters (54.864m)
     FULL_WAREHOUSE_LENGTH_M = 90.0 * 0.3048   # Convert to meters (27.432m)
     
-    # Camera coverage zones (approximate coverage areas in feet) - 4-3-4 layout
+    # Camera coverage zones - NEW COORDINATE SYSTEM (Origin: Top-Right, 3-Column Layout)
+    # Warehouse: 180ft x 90ft, Origin (0,0) at top-right, (180,90) at bottom-left
+    # Column widths: 60ft each, Camera zones: 22.5ft height each
     CAMERA_COVERAGE_ZONES = {
-        # Row 1 (Front) - 4 cameras
-        1: {"x_start": 0, "x_end": 45, "y_start": 0, "y_end": 30},      # Front Left
-        2: {"x_start": 35, "x_end": 80, "y_start": 0, "y_end": 30},     # Front Center-Left
-        3: {"x_start": 70, "x_end": 115, "y_start": 0, "y_end": 30},    # Front Center-Right
-        4: {"x_start": 105, "x_end": 150, "y_start": 0, "y_end": 30},   # Front Right
+        # Column 1 (Rightmost, x: 0-60ft) - Cameras 1-4 (top to bottom)
+        1: {"x_start": 0, "x_end": 60, "y_start": 0, "y_end": 22.5, "center_x": 30, "center_y": 11.25, "column": 1},
+        2: {"x_start": 0, "x_end": 60, "y_start": 22.5, "y_end": 45, "center_x": 30, "center_y": 33.75, "column": 1},
+        3: {"x_start": 0, "x_end": 60, "y_start": 45, "y_end": 67.5, "center_x": 30, "center_y": 56.25, "column": 1},
+        4: {"x_start": 0, "x_end": 60, "y_start": 67.5, "y_end": 90, "center_x": 30, "center_y": 78.75, "column": 1},
         
-        # Row 2 (Middle) - 3 cameras
-        5: {"x_start": 0, "x_end": 60, "y_start": 25, "y_end": 55},     # Middle Left
-        6: {"x_start": 45, "x_end": 105, "y_start": 25, "y_end": 55},   # Middle Center
-        7: {"x_start": 90, "x_end": 150, "y_start": 25, "y_end": 55},   # Middle Right
+        # Column 2 (Middle, x: 60-120ft) - Cameras 5-7 + Office (top to bottom)
+        5: {"x_start": 60, "x_end": 120, "y_start": 0, "y_end": 22.5, "center_x": 90, "center_y": 11.25, "column": 2},
+        6: {"x_start": 60, "x_end": 120, "y_start": 22.5, "y_end": 45, "center_x": 90, "center_y": 33.75, "column": 2},
+        7: {"x_start": 60, "x_end": 120, "y_start": 45, "y_end": 67.5, "center_x": 90, "center_y": 56.25, "column": 2},
+        "office": {"x_start": 60, "x_end": 120, "y_start": 67.5, "y_end": 90, "center_x": 90, "center_y": 78.75, "column": 2, "trackable": False},
         
-        # Row 3 (Back) - 4 cameras
-        8: {"x_start": 0, "x_end": 45, "y_start": 60, "y_end": 90},     # Back Left - ACTIVE (at far end)
-        9: {"x_start": 35, "x_end": 80, "y_start": 60, "y_end": 90},    # Back Center-Left
-        10: {"x_start": 70, "x_end": 115, "y_start": 60, "y_end": 90},  # Back Center-Right
-        11: {"x_start": 105, "x_end": 150, "y_start": 60, "y_end": 90}  # Back Right
+        # Column 3 (Leftmost, x: 120-180ft) - Camera 8 (top-left area)
+        8: {"x_start": 120, "x_end": 180, "y_start": 0, "y_end": 25, "center_x": 150, "center_y": 12.5, "column": 3},  # FIXED: Camera 8 in top-left area
+        9: {"x_start": 120, "x_end": 180, "y_start": 25, "y_end": 50, "center_x": 150, "center_y": 37.5, "column": 3},
+        10: {"x_start": 120, "x_end": 180, "y_start": 50, "y_end": 75, "center_x": 150, "center_y": 62.5, "column": 3},
+        11: {"x_start": 120, "x_end": 180, "y_start": 75, "y_end": 90, "center_x": 150, "center_y": 82.5, "column": 3}
     }
     
     # RTSP connection settings

@@ -12,10 +12,11 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 
 # Import modules
-from config import Config
+from configs.config import Config
 from detector_tracker import DetectorTracker
 from database_handler import DatabaseHandler
 from rtsp_camera_manager import MultiCameraRTSPManager
+from multi_camera_grid_display import MultiCameraGridDisplay
 
 # Set up logging
 logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL))
@@ -35,6 +36,7 @@ class MultiCameraTrackingSystem:
         # Initialize tracking components
         self.detector_tracker = DetectorTracker()
         self.database_handler = DatabaseHandler()
+        self.grid_display = MultiCameraGridDisplay()
         
         # Performance tracking
         self.fps_counter = 0
@@ -67,6 +69,11 @@ class MultiCameraTrackingSystem:
             return False
         
         logger.info(f"✅ System started with {active_count} active cameras")
+
+        # Start grid display
+        self.grid_display.start_display()
+        logger.info("🖥️ Grid display started")
+
         return True
     
     def run_tracking(self):
@@ -182,49 +189,24 @@ class MultiCameraTrackingSystem:
             logger.error(f"❌ Error storing objects from Camera {camera_id}: {e}")
     
     def _display_camera_frame(self, frame: np.ndarray, result_dict: Dict, camera_id: int):
-        """Display frame with tracking overlay for a specific camera"""
+        """Send frame to grid display with tracking overlay"""
         try:
             display_frame = frame.copy()
-            camera_name = Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}")
-            
+
             # Draw tracked objects
             if result_dict and result_dict.get('tracked_objects'):
                 display_frame = self.detector_tracker.draw_tracked_objects(frame, result_dict['tracked_objects'])
-            else:
-                cv2.putText(display_frame, "No objects detected", (10, 30), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-            
-            # Add coordinate system info overlay
+
+            # Add coordinate system info overlay (smaller for grid view)
             display_frame = self.detector_tracker.draw_coordinate_system_info(display_frame)
-            
-            # Add camera information overlay
-            cv2.putText(display_frame, camera_name, (10, display_frame.shape[0] - 100), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-            cv2.putText(display_frame, f"FPS: {self.fps:.1f}", (10, display_frame.shape[0] - 70), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(display_frame, f"Frame: {self.frame_count}", (10, display_frame.shape[0] - 40), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            
-            # Add timestamp
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            cv2.putText(display_frame, timestamp, (display_frame.shape[1] - 120, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            
-            # Show frame
-            window_name = f'Camera {camera_id} - Multi-Camera Tracking'
-            cv2.imshow(window_name, display_frame)
-            
-            # Handle key press
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                self.running = False
-            elif key == ord('s'):
-                self._print_system_stats()
-            elif key == ord('c'):
-                self._show_camera_controls()
-                
+
+            # Update grid display with this camera's frame
+            self.grid_display.update_camera_frame(camera_id, display_frame)
+
         except Exception as e:
             logger.error(f"❌ Display error for Camera {camera_id}: {e}")
+            # Mark camera as disconnected in grid display
+            self.grid_display.set_camera_disconnected(camera_id)
     
     def _update_fps(self):
         """Update FPS calculation"""
@@ -315,11 +297,12 @@ class MultiCameraTrackingSystem:
     def _cleanup(self):
         """Cleanup system resources"""
         logger.info("🧹 Cleaning up multi-camera tracking system...")
-        
+
         self.running = False
         self.camera_manager.cleanup()
+        self.grid_display.stop_display()
         cv2.destroyAllWindows()
-        
+
         logger.info("✅ Multi-camera tracking system stopped")
 
 def main():

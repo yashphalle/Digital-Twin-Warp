@@ -11,7 +11,7 @@ import queue
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
-from config import Config
+from configs.config import Config
 
 # Import the existing pipeline and corrector classes
 from simplified_lorex_pipeline import SimpleLorexPipeline

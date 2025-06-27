@@ -1,0 +1,80 @@
+{
+  "description": "RTSP Camera 7 Warehouse Calibration - NEW COORDINATE SYSTEM",
+  "created_date": "2025-06-25T10:35:56.944197",
+  "camera_info": {
+    "camera_id": 7,
+    "camera_name": "Camera 7 - Column 2 Mid-Bottom",
+    "rtsp_url": "rtsp://admin:wearewarp!@192.168.0.77:554/Streaming/channels/1",
+    "frame_width": 3840,
+    "frame_height": 2160,
+    "fisheye_corrected": true,
+    "lens_mm": 2.8
+  },
+  "warehouse_dimensions": {
+    "width_feet": 60.0,
+    "length_feet": 22.5,
+    "width_meters": 18.288,
+    "length_meters": 6.858,
+    "coverage_zone": {
+      "x_start_ft": 60,
+      "x_end_ft": 120,
+      "y_start_ft": 45,
+      "y_end_ft": 67.5,
+      "center_x_ft": 90,
+      "center_y_ft": 56.25,
+      "column": 2,
+      "position": "mid-bottom"
+    }
+  },
+  "coordinate_system_info": {
+    "warehouse_origin": "top-right corner (0,0)",
+    "warehouse_dimensions": "180ft x 90ft",
+    "x_axis_direction": "right-to-left (0 to 180ft)",
+    "y_axis_direction": "top-to-bottom (0 to 90ft)",
+    "local_coverage": "60ft x 22.5ft area",
+    "global_position": "Column 2, mid-bottom section"
+  },
+  "image_corners": [
+    [
+      0,
+      0
+    ],
+    [
+      3840,
+      0
+    ],
+    [
+      3840,
+      2160
+    ],
+    [
+      0,
+      2160
+    ]
+  ],
+  "real_world_corners": [
+    [
+      60,
+      45
+    ],
+    [
+      120.0,
+      45
+    ],
+    [
+      120.0,
+      67.5
+    ],
+    [
+      60,
+      67.5
+    ]
+  ],
+  "calibration_info": {
+    "corner_order": "top-left, top-right, bottom-right, bottom-left",
+    "coordinate_system": "local camera coordinates: origin at top-left, x-axis right, y-axis down",
+    "units": "feet",
+    "calibration_status": "TEMPLATE - Needs manual calibration",
+    "notes": "Camera 7 covers 60ft x 22.5ft area. Local coordinates (0-60ft, 0-22.5ft) are transformed to warehouse coordinates by the CoordinateMapper class."
+  }
+}
