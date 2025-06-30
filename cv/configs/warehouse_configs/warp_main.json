@@ -77,7 +77,7 @@
       "column": 2,
       "row": 1,
       "camera_name": "Camera 5 - Mid Right",
-      "rtsp_url": "rtsp://admin:wearewarp!@192.168.0.77:554/Streaming/channels/1",
+      "rtsp_url": "rtsp://admin:wearewarp!@104.181.138.5:555/Streaming/channels/1",
       "active": true
     },
     "6": {
@@ -89,7 +89,7 @@
       "column": 2,
       "row": 2,
       "camera_name": "Camera 6 - Middle Middle",
-      "rtsp_url": "rtsp://admin:wearewarp!@192.168.0.106:554/Streaming/channels/1",
+      "rtsp_url": "rtsp://admin:wearewarp!@104.181.138.5:556/Streaming/channels/1",
       "active": true
     },
     "7": {
@@ -125,7 +125,7 @@
       "column": 1,
       "row": 2,
       "camera_name": "Camera 2 - Front Middle 1",
-      "rtsp_url": "rtsp://admin:wearewarp!@192.168.0.85:554/Streaming/channels/1",
+      "rtsp_url": "rtsp://admin:wearewarp!@192.168.1.64:562/Streaming/channels/1",
       "active": true
     },
     "3": {

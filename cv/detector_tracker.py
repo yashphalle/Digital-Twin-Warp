@@ -288,14 +288,91 @@ class DetectorTracker:
 
         # Initialize detection model
         self.model_id = Config.MODEL_ID
-        logger.info(f"Loading detection model on {self.device}...")
-        
+        logger.info(f"🔍 Loading detection model on {self.device}...")
+        logger.info(f"🔍 Model ID: {self.model_id}")
+
         try:
+            # Load processor
+            logger.info("🔍 Loading AutoProcessor...")
             self.processor = AutoProcessor.from_pretrained(self.model_id)
-            self.model = AutoModelForZeroShotObjectDetection.from_pretrained(self.model_id).to(self.device)
-            logger.info("Detection model loaded successfully")
+            logger.info("✅ AutoProcessor loaded successfully")
+
+            # Load model with detailed logging
+            logger.info("🔍 Loading AutoModelForZeroShotObjectDetection...")
+            self.model = AutoModelForZeroShotObjectDetection.from_pretrained(self.model_id)
+            logger.info("✅ Model loaded from pretrained")
+
+            # Move model to device with verification
+            logger.info(f"🔍 Moving model to device: {self.device}")
+            self.model = self.model.to(self.device)
+
+            # Verify model device placement
+            model_device = next(self.model.parameters()).device
+            logger.info(f"🔍 Model device after .to(): {model_device}")
+
+            # Fix device comparison (cuda and cuda:0 are the same)
+            if (str(model_device).startswith('cuda') and self.device.startswith('cuda')) or str(model_device) == self.device:
+                logger.info(f"✅ Model successfully placed on {model_device}")
+            else:
+                logger.error(f"❌ MODEL DEVICE MISMATCH! Expected: {self.device}, Got: {model_device}")
+                logger.error("💡 This indicates a GPU allocation problem")
+
+            # Check model memory usage if on GPU
+            if self.device == "cuda":
+                memory_after_model = torch.cuda.memory_allocated(0) / 1024**3
+                logger.info(f"🔍 GPU Memory after model loading: {memory_after_model:.2f}GB")
+
+                # Estimate model size
+                model_params = sum(p.numel() for p in self.model.parameters())
+                model_size_gb = model_params * 4 / 1024**3  # Assuming float32
+                logger.info(f"🔍 Estimated model size: {model_size_gb:.2f}GB ({model_params:,} parameters)")
+
+            logger.info("✅ Detection model loaded and placed successfully")
+
+            # 🚀 IMMEDIATE GPU INFERENCE TEST
+            if self.device == "cuda":
+                logger.info("🔍 Testing GPU inference with dummy data...")
+                try:
+                    # Create dummy image and text
+                    dummy_image = Image.new('RGB', (640, 480), color='red')
+                    dummy_inputs = self.processor(images=dummy_image, text="test", return_tensors="pt")
+                    dummy_inputs = {k: v.to(self.device) for k, v in dummy_inputs.items()}
+
+                    # Run inference
+                    with torch.no_grad():
+                        if self.use_mixed_precision:
+                            with torch.amp.autocast('cuda', dtype=torch.float16):
+                                dummy_outputs = self.model(**dummy_inputs)
+                        else:
+                            with torch.amp.autocast('cuda'):
+                                dummy_outputs = self.model(**dummy_inputs)
+
+                    # Check GPU memory after test
+                    memory_after_test = torch.cuda.memory_allocated(0) / 1024**3
+                    logger.info(f"✅ GPU INFERENCE TEST SUCCESSFUL! Memory used: {memory_after_test:.2f}GB")
+                    logger.info("🚀 GPU IS ACTIVELY PROCESSING - System ready for camera feeds")
+
+                    # Cleanup
+                    del dummy_inputs, dummy_outputs
+                    torch.cuda.empty_cache()
+
+                except Exception as e:
+                    logger.error(f"❌ GPU inference test failed: {e}")
+                    logger.error("💡 GPU may not be working properly for inference")
+
         except Exception as e:
-            logger.error(f"Failed to load detection model: {e}")
+            logger.error(f"❌ Failed to load detection model: {e}")
+            logger.error(f"🔍 Error type: {type(e).__name__}")
+            logger.error(f"🔍 Error details: {str(e)}")
+
+            # Additional GPU-specific error handling
+            if self.device == "cuda" and "CUDA" in str(e):
+                logger.error("💡 CUDA-related error detected. Possible causes:")
+                logger.error("   1. Insufficient GPU memory")
+                logger.error("   2. CUDA driver/runtime mismatch")
+                logger.error("   3. Model too large for GPU")
+                logger.error("💡 Try setting smaller GPU_MEMORY_FRACTION in config")
+
             raise
         
         if self.device == "cuda":
@@ -305,7 +382,14 @@ class DetectorTracker:
         # Detection parameters
         self.prompt = Config.DETECTION_PROMPT
         self.confidence_threshold = Config.CONFIDENCE_THRESHOLD
-        
+
+        # 🚀 Performance optimization settings
+        self.detection_resolution = Config.DETECTION_RESOLUTION
+        self.skip_detection_frames = Config.SKIP_DETECTION_FRAMES
+        self.frame_skip_counter = 0
+        self.use_mixed_precision = Config.USE_MIXED_PRECISION
+        self.aggressive_memory_cleanup = Config.AGGRESSIVE_MEMORY_CLEANUP
+
         # Tracking state
         self.tracked_objects: Dict[int, TrackedObject] = {}
         self.next_id = 1
@@ -350,41 +434,219 @@ class DetectorTracker:
         self.coordinate_mapper.load_calibration(calibration_file)
 
     def setup_gpu(self, force_gpu: bool = True):
-        """Setup GPU configuration"""
+        """Setup GPU configuration with comprehensive debugging"""
+        logger.info("🔍 GPU DEBUGGING - Starting comprehensive GPU diagnostics...")
+
+        # 1. Basic CUDA availability
         cuda_available = torch.cuda.is_available()
-        
+        logger.info(f"🔍 CUDA Available: {cuda_available}")
+
         if cuda_available:
+            # 2. CUDA device information
+            device_count = torch.cuda.device_count()
+            current_device = torch.cuda.current_device()
+            device_name = torch.cuda.get_device_name(0)
+
+            logger.info(f"🔍 CUDA Device Count: {device_count}")
+            logger.info(f"🔍 Current CUDA Device: {current_device}")
+            logger.info(f"🔍 Device Name: {device_name}")
+
+            # 3. Memory information
+            memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
+            memory_reserved = torch.cuda.memory_reserved(0) / 1024**3
+            memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+
+            logger.info(f"🔍 GPU Memory - Allocated: {memory_allocated:.2f}GB")
+            logger.info(f"🔍 GPU Memory - Reserved: {memory_reserved:.2f}GB")
+            logger.info(f"🔍 GPU Memory - Total: {memory_total:.2f}GB")
+
+            # 4. CUDA version information
+            cuda_version = torch.version.cuda
+            cudnn_version = torch.backends.cudnn.version()
+            logger.info(f"🔍 CUDA Version: {cuda_version}")
+            logger.info(f"🔍 cuDNN Version: {cudnn_version}")
+
+            # 5. PyTorch build info
+            logger.info(f"🔍 PyTorch Version: {torch.__version__}")
+            logger.info(f"🔍 PyTorch CUDA Compiled: {torch.version.cuda is not None}")
+
             torch.cuda.empty_cache()
             self.device = "cuda"
-            logger.info("Using CUDA GPU")
+            logger.info("✅ Using CUDA GPU")
         else:
+            # 6. Detailed CPU fallback reasons
+            logger.error("❌ CUDA not available - investigating reasons...")
+            logger.error(f"🔍 PyTorch Version: {torch.__version__}")
+            logger.error(f"🔍 CUDA Compiled: {torch.version.cuda}")
+
+            # Check if this is a CPU-only PyTorch installation
+            if torch.version.cuda is None:
+                logger.error("❌ CRITICAL: PyTorch was compiled WITHOUT CUDA support!")
+                logger.error("💡 SOLUTION: Install CUDA-enabled PyTorch:")
+                logger.error("   pip uninstall torch torchvision")
+                logger.error("   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118")
+
             if force_gpu:
-                logger.warning("CUDA not available, using CPU")
+                logger.warning("⚠️ Forced to use CPU despite GPU request")
             self.device = "cpu"
 
         if self.device == "cuda":
-            torch.cuda.set_per_process_memory_fraction(Config.GPU_MEMORY_FRACTION)
+            # 7. Set memory fraction and test allocation
+            try:
+                torch.cuda.set_per_process_memory_fraction(Config.GPU_MEMORY_FRACTION)
+                logger.info(f"🔍 GPU Memory Fraction Set: {Config.GPU_MEMORY_FRACTION}")
+
+                # Test GPU allocation
+                test_tensor = torch.randn(1000, 1000).to(self.device)
+                logger.info("✅ GPU Test Allocation Successful")
+                del test_tensor
+                torch.cuda.empty_cache()
+
+            except Exception as e:
+                logger.error(f"❌ GPU Setup Error: {e}")
+                logger.error("💡 Falling back to CPU due to GPU setup failure")
+                self.device = "cpu"
     
     def detect_boxes(self, frame: np.ndarray) -> Dict:
-        """Detect boxes in frame using Grounding DINO"""
+        """Detect boxes in frame using Grounding DINO with GPU debugging and performance optimization"""
         detection_start = time.time()
-        
+
+        # 🚀 FRAME SKIPPING FOR PERFORMANCE
+        self.frame_skip_counter += 1
+        if self.frame_skip_counter <= self.skip_detection_frames:
+            # Skip this frame - return empty detection
+            return {
+                'boxes': [],
+                'scores': [],
+                'labels': [],
+                'processing_time': time.time() - detection_start,
+                'skipped': True
+            }
+
+        # Reset counter - process this frame
+        self.frame_skip_counter = 0
+
+        # Debug frame count for periodic GPU monitoring
+        if not hasattr(self, '_debug_frame_count'):
+            self._debug_frame_count = 0
+        self._debug_frame_count += 1
+
+        # Detailed GPU debugging every 100 frames
+        debug_this_frame = (self._debug_frame_count % 100 == 1)
+
+        # 🚀 REAL-TIME GPU USAGE MONITORING (every 10 frames)
+        monitor_gpu = (self._debug_frame_count % 10 == 1) and self.device == "cuda"
+
         try:
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # 🚀 RESOLUTION OPTIMIZATION - Resize frame for detection
+            original_height, original_width = frame.shape[:2]
+            target_width, target_height = self.detection_resolution
+
+            # Only resize if frame is larger than target resolution
+            if original_width > target_width or original_height > target_height:
+                # Calculate aspect ratio preserving resize
+                scale = min(target_width / original_width, target_height / original_height)
+                new_width = int(original_width * scale)
+                new_height = int(original_height * scale)
+
+                resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+                if debug_this_frame:
+                    logger.info(f"🔍 Frame resized: {original_width}x{original_height} → {new_width}x{new_height}")
+            else:
+                resized_frame = frame
+                scale = 1.0
+
+            rgb_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(rgb_frame)
 
             inputs = self.processor(images=pil_image, text=self.prompt, return_tensors="pt")
 
+            if debug_this_frame:
+                logger.info(f"🔍 Frame {self._debug_frame_count} - Input tensor shapes:")
+                for k, v in inputs.items():
+                    if hasattr(v, 'shape'):
+                        logger.info(f"   {k}: {v.shape} on {v.device}")
+
+            # Move inputs to device with verification
             if self.device == "cuda":
                 inputs = {k: v.to(self.device, non_blocking=True) for k, v in inputs.items()}
+
+                if debug_this_frame:
+                    logger.info("🔍 After moving to CUDA:")
+                    for k, v in inputs.items():
+                        if hasattr(v, 'device'):
+                            logger.info(f"   {k}: on {v.device}")
+
+                    # Check GPU memory before inference
+                    memory_before = torch.cuda.memory_allocated(0) / 1024**3
+                    logger.info(f"🔍 GPU Memory before inference: {memory_before:.2f}GB")
             else:
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
+            # Model inference with device verification
             with torch.no_grad():
                 if self.device == "cuda":
-                    with torch.amp.autocast('cuda'):
-                        outputs = self.model(**inputs)
+                    # 🔥 CRITICAL: Check GPU memory before inference
+                    memory_available = torch.cuda.get_device_properties(0).total_memory
+                    memory_allocated = torch.cuda.memory_allocated(0)
+                    memory_free = memory_available - memory_allocated
+                    memory_free_gb = memory_free / 1024**3
+
+                    if memory_free_gb < Config.GPU_MEMORY_BUFFER:
+                        logger.warning(f"⚠️ LOW GPU MEMORY: {memory_free_gb:.2f}GB free, clearing cache...")
+                        torch.cuda.empty_cache()
+                        # Re-check after cleanup
+                        memory_allocated = torch.cuda.memory_allocated(0)
+                        memory_free = memory_available - memory_allocated
+                        memory_free_gb = memory_free / 1024**3
+                        logger.info(f"🧹 After cleanup: {memory_free_gb:.2f}GB free")
+
+                    # Verify model is still on GPU
+                    model_device = next(self.model.parameters()).device
+                    if debug_this_frame:
+                        logger.info(f"🔍 Model device at inference: {model_device}")
+
+                    if not str(model_device).startswith("cuda"):
+                        logger.error(f"❌ MODEL MOVED TO CPU! Device: {model_device}")
+                        logger.error("💡 This indicates GPU memory overflow - CRITICAL ISSUE!")
+                        logger.error(f"💡 Available memory: {memory_free_gb:.2f}GB")
+                        logger.error("💡 Try reducing ACTIVE_CAMERAS or increasing SKIP_DETECTION_FRAMES")
+
+                        # Try to move model back to GPU
+                        try:
+                            logger.info("🔄 Attempting to move model back to GPU...")
+                            self.model = self.model.to('cuda')
+                            torch.cuda.empty_cache()
+                            logger.info("✅ Model moved back to GPU")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to move model back to GPU: {e}")
+                            logger.error("💡 System will continue on CPU (slower performance)")
+                            self.device = "cpu"  # Switch to CPU mode
+
+                    # 🚀 MIXED PRECISION INFERENCE for 2x memory efficiency
+                    # 🚀 MONITOR GPU BEFORE INFERENCE
+                    if monitor_gpu:
+                        memory_before_inference = torch.cuda.memory_allocated(0) / 1024**3
+                        logger.info(f"🚀 FRAME {self._debug_frame_count}: GPU ACTIVE - Memory before inference: {memory_before_inference:.2f}GB")
+
+                    if self.use_mixed_precision:
+                        with torch.amp.autocast('cuda', dtype=torch.float16):
+                            outputs = self.model(**inputs)
+                    else:
+                        with torch.amp.autocast('cuda'):
+                            outputs = self.model(**inputs)
+
+                    # 🚀 MONITOR GPU AFTER INFERENCE
+                    if monitor_gpu:
+                        memory_after_inference = torch.cuda.memory_allocated(0) / 1024**3
+                        logger.info(f"🚀 FRAME {self._debug_frame_count}: GPU INFERENCE COMPLETE - Memory after: {memory_after_inference:.2f}GB")
+
+                    if debug_this_frame:
+                        memory_after = torch.cuda.memory_allocated(0) / 1024**3
+                        logger.info(f"🔍 GPU Memory after inference: {memory_after:.2f}GB")
                 else:
+                    if debug_this_frame:
+                        logger.info("🔍 Running inference on CPU")
                     outputs = self.model(**inputs)
 
             results = self.processor.post_process_grounded_object_detection(
@@ -395,16 +657,39 @@ class DetectorTracker:
                 target_sizes=[pil_image.size[::-1]]
             )[0]
 
-            # GPU memory management
-            if self.device == "cuda" and self.frame_count % Config.MODEL_CACHE_FRAMES == 0:
-                torch.cuda.empty_cache()
-            
+            # 🚀 STRATEGY 5: AGGRESSIVE GPU MEMORY MANAGEMENT for 11 cameras
+            if self.device == "cuda":
+                if self.aggressive_memory_cleanup:
+                    # Clear cache after every camera processing
+                    torch.cuda.empty_cache()
+                    # Force garbage collection
+                    import gc
+                    gc.collect()
+                elif self.frame_count % Config.MODEL_CACHE_FRAMES == 0:
+                    # Standard cleanup
+                    torch.cuda.empty_cache()
+
+                # Log GPU utilization periodically
+                if debug_this_frame:
+                    memory_used = torch.cuda.memory_allocated(0) / 1024**3
+                    memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                    gpu_utilization = (memory_used / memory_total) * 100
+                    logger.info(f"🔍 GPU Utilization: {gpu_utilization:.1f}% ({memory_used:.2f}GB / {memory_total:.1f}GB)")
+
             # Track detection time
             detection_time = time.time() - detection_start
             self.detection_times.append(detection_time)
             if len(self.detection_times) > Config.FPS_CALCULATION_FRAMES:
                 self.detection_times.pop(0)
-            
+
+            # Scale bounding boxes back to original resolution if frame was resized
+            if 'scale' in locals() and scale != 1.0:
+                for i, box in enumerate(results['boxes']):
+                    if len(box) == 4:
+                        results['boxes'][i] = [coord / scale for coord in box]
+
+            results['processing_time'] = detection_time
+            results['skipped'] = False
             return results
             
         except Exception as e:

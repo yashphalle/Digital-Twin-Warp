@@ -29,7 +29,16 @@ class MultiCameraTrackingSystem:
         logger.info("🏭 Initializing Multi-Camera Tracking System")
         logger.info(f"📹 Configured for {len(Config.RTSP_CAMERA_URLS)} cameras")
         logger.info(f"🎯 Active processing: {Config.ACTIVE_CAMERAS}")
-        
+
+        # Log GPU status for debugging
+        Config.log_gpu_status()
+
+        # 🚀 GPU MEMORY MANAGEMENT
+        if Config.SEQUENTIAL_CAMERA_PROCESSING:
+            logger.info("🔥 SEQUENTIAL PROCESSING MODE: Processing cameras one at a time to prevent GPU overflow")
+            self.camera_processing_queue = Config.ACTIVE_CAMERAS.copy()
+            self.current_camera_index = 0
+
         # Initialize camera manager
         self.camera_manager = MultiCameraRTSPManager()
         
@@ -139,10 +148,28 @@ class MultiCameraTrackingSystem:
             else:
                 result_dict = result_data if result_data else {'tracked_objects': []}
             
+            # 🚀 GPU UTILIZATION MONITORING (every 500 frames)
+            if self.frame_count % 500 == 0:
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        memory_used = torch.cuda.memory_allocated(0) / 1024**3
+                        memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                        gpu_utilization = (memory_used / memory_total) * 100
+                        logger.info(f"🚀 GPU UTILIZATION: {gpu_utilization:.1f}% ({memory_used:.2f}GB / {memory_total:.1f}GB)")
+
+                        # Target: 80-90% utilization
+                        if gpu_utilization < 70:
+                            logger.info("💡 GPU utilization low - consider reducing SKIP_DETECTION_FRAMES")
+                        elif gpu_utilization > 95:
+                            logger.warning("⚠️ GPU utilization very high - consider increasing SKIP_DETECTION_FRAMES")
+                except Exception as e:
+                    pass  # Ignore GPU monitoring errors
+
             # Store tracked objects in database
             if result_dict and result_dict.get('tracked_objects'):
                 self._store_objects_with_camera_info(result_dict['tracked_objects'], camera_id)
-            
+
             # Display frame with tracking overlay
             self._display_camera_frame(frame, result_dict, camera_id)
             

@@ -59,6 +59,46 @@ class Config:
     FORCE_GPU = True
     GPU_MEMORY_FRACTION = 0.8
 
+    # 🚀 STRATEGY 1: SEQUENTIAL PROCESSING FOR 11 CAMERAS ON 6GB GPU
+    DETECTION_RESOLUTION = (1920, 1080)  # 1080p for good quality/performance balance
+    SKIP_DETECTION_FRAMES = 2  # Process every 3rd frame
+    USE_MIXED_PRECISION = True  # FP16 for 2x memory efficiency
+    AGGRESSIVE_MEMORY_CLEANUP = True  # Clear cache after each camera
+
+    # Sequential processing settings
+    SEQUENTIAL_CAMERA_PROCESSING = True  # Process cameras one at a time
+    CAMERA_PROCESSING_BATCH_SIZE = 1  # Process 1 camera at a time
+    GPU_MEMORY_BUFFER = 1.5  # Reserve 1.5GB for safety
+
+    # Advanced GPU optimization
+    ENABLE_GPU_MEMORY_FRACTION = True
+    GPU_MEMORY_FRACTION = 0.9  # Use 90% of GPU memory
+    TORCH_CUDNN_BENCHMARK = True  # Optimize for consistent input sizes
+
+    # GPU debugging (will be logged at startup)
+    @classmethod
+    def log_gpu_status(cls):
+        """Log GPU status for debugging"""
+        import torch
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info("🔍 GPU STATUS CHECK:")
+        logger.info(f"   PyTorch Version: {torch.__version__}")
+        logger.info(f"   CUDA Available: {torch.cuda.is_available()}")
+        logger.info(f"   CUDA Version: {torch.version.cuda}")
+
+        if torch.cuda.is_available():
+            logger.info(f"   GPU Count: {torch.cuda.device_count()}")
+            logger.info(f"   GPU Name: {torch.cuda.get_device_name(0)}")
+            memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            logger.info(f"   GPU Memory: {memory_total:.1f}GB")
+        else:
+            logger.warning("   ⚠️ CUDA NOT AVAILABLE - Will use CPU")
+            if torch.version.cuda is None:
+                logger.error("   ❌ PyTorch compiled without CUDA support!")
+                logger.error("   💡 Run: python gpu_diagnostics.py for detailed analysis")
+
     # Performance optimization
     DETECTION_BATCH_SIZE = 1
     MODEL_CACHE_FRAMES = 100  # Clear GPU cache every N frames
@@ -289,26 +329,27 @@ class Config:
         ACTIVE_CAMERAS = get_active_cameras()  # Dynamic from warehouse config
     except ImportError:
         # Fallback for Phase 1
-        ACTIVE_CAMERAS = [8, 9, 10, 11]  # PHASE 1: Activate entire Column 3 (left column)
+        ACTIVE_CAMERAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # ALL CAMERAS
     
     # Lorex RTSP Camera URLs (11 cameras total) - UPDATED FROM DEVICE LIST
     RTSP_CAMERA_URLS = {
         # Row 1 (Front) - 4 cameras
-        1: "rtsp://admin:wearewarp!@192.168.0.81:554/Streaming/channels/1",  # Cam 1 Front Right ✅ FIXED
-        2: "rtsp://admin:wearewarp!@192.168.0.85:554/Streaming/channels/1",  # Cam 2 Front Middle 1 ✅
-        3: "rtsp://admin:wearewarp!@192.168.0.83:554/Streaming/channels/1",  # Cam 3 Front Left ✅ FIXED
-        4: "rtsp://admin:wearewarp!@192.168.0.84:554/Streaming/channels/1",  # Cam 4 Front Bottom ✅ FIXED
+        1: "rtsp://admin:wearewarp!@104.181.138.5:5561/Streaming/channels/1",  # Cam 1 REMOTE
+        2: "rtsp://admin:wearewarp!@104.181.138.5:5562/Streaming/channels/1",  # Cam 2 REMOTE
+        3: "rtsp://admin:wearewarp!@104.181.138.5:5563/Streaming/channels/1",  # Cam 3 REMOTE
+        4: "rtsp://admin:wearewarp!@104.181.138.5:5564/Streaming/channels/1",  # Cam 4 REMOTE
 
         # Row 2 (Middle) - 3 cameras
-        5: "rtsp://admin:wearewarp!@192.168.0.77:554/Streaming/channels/1",  # Cam 5 Mid Right ✅
-        6: "rtsp://admin:wearewarp!@192.168.0.106:554/Streaming/channels/1", # Cam 6 Middle Middle ✅ FIXED
-        7: "rtsp://admin:wearewarp!@192.168.0.79:554/Streaming/channels/1",  # Cam 7 Middle Left ✅
+        # 5: "rtsp://admin:wearewarp!@192.168.0.77:555/Streaming/channels/1",  # Cam 5 Mid Right ✅ LOCAL (port corrected)
+        5: "rtsp://admin:wearewarp!@104.181.138.5:5565/Streaming/channels/1",  # Cam 5 REMOTE
+        6: "rtsp://admin:wearewarp!@104.181.138.5:5566/Streaming/channels/1",  # Cam 6 REMOTE
+        7: "rtsp://admin:wearewarp!@104.181.138.5:5567/Streaming/channels/1",  # Cam 7 REMOTE
 
         # Row 3 (Back) - 4 cameras - These are at the FAR END of warehouse
-        8: "rtsp://admin:wearewarp!@192.168.0.79:554/Streaming/channels/1",  # Cam 8 Back Right ✅
-        9: "rtsp://admin:wearewarp!@192.168.0.80:554/Streaming/channels/1",  # Cam 9 Back Middle 1 ✅
-        10: "rtsp://admin:wearewarp!@192.168.0.80:554/Streaming/channels/1", # Cam 10 Back Middle 2 ✅
-        11: "rtsp://admin:wearewarp!@192.168.0.64:554/Streaming/channels/1"  # Cam 11 Back Left ✅
+        8: "rtsp://admin:wearewarp!@104.181.138.5:5568/Streaming/channels/1",  # Cam 8 REMOTE
+        9: "rtsp://admin:wearewarp!@104.181.138.5:5569/Streaming/channels/1",  # Cam 9 REMOTE
+        10: "rtsp://admin:wearewarp!@104.181.138.5:55610/Streaming/channels/1", # Cam 10 REMOTE
+        11: "rtsp://admin:wearewarp!@104.181.138.5:55611/Streaming/channels/1"  # Cam 11 REMOTE
     }
     
     # Camera names for identification - NEW LAYOUT (3-Column, Origin Top-Right)
