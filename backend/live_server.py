@@ -31,7 +31,7 @@ app.add_middleware(
 # MongoDB connection
 MONGO_URI = "mongodb://localhost:27017/"
 DATABASE_NAME = "warehouse_tracking"
-COLLECTION_NAME = "detections"
+COLLECTION_NAME = "detections"  # Changed to match CV system
 
 try:
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
@@ -240,20 +240,26 @@ async def get_tracked_objects():
         # Get recent detections (last 5 minutes) with physical coordinates
         five_minutes_ago = datetime.now() - timedelta(minutes=5)
 
-        # Query for recent detections from CV system
+        # Query for recent detections from CV system (handle both timestamp formats)
         query = {
             "$and": [
-                {"timestamp": {"$gte": five_minutes_ago}},
+                {
+                    "$or": [
+                        {"timestamp": {"$gte": five_minutes_ago}},  # Old format
+                        {"last_seen": {"$gte": five_minutes_ago}},  # New format
+                        {"first_seen": {"$gte": five_minutes_ago}}  # New format
+                    ]
+                },
                 {"physical_x_ft": {"$exists": True, "$ne": None}},
                 {"physical_y_ft": {"$exists": True, "$ne": None}}
             ]
         }
 
-        # Get detections, excluding MongoDB _id field
+        # Get detections, excluding MongoDB _id field (sort by most recent timestamp)
         detections = list(tracking_collection.find(
             query,
             {"_id": 0}
-        ).sort([("timestamp", -1)]).limit(100))
+        ).sort([("last_seen", -1), ("timestamp", -1), ("first_seen", -1)]).limit(100))
         
         logger.info(f"📊 Found {len(detections)} detections in database")
 
@@ -261,9 +267,10 @@ async def get_tracked_objects():
         processed_objects = []
         for detection in detections:
             try:
-                # Convert datetime objects to ISO strings
-                if "timestamp" in detection and isinstance(detection["timestamp"], datetime):
-                    detection["timestamp"] = detection["timestamp"].isoformat()
+                # Convert datetime objects to ISO strings (handle multiple timestamp fields)
+                for timestamp_field in ["timestamp", "last_seen", "first_seen"]:
+                    if timestamp_field in detection and isinstance(detection[timestamp_field], datetime):
+                        detection[timestamp_field] = detection[timestamp_field].isoformat()
 
                 # Create object structure for frontend
                 obj = {
@@ -282,7 +289,14 @@ async def get_tracked_objects():
                     "timestamp": detection.get("timestamp"),
                     "first_seen": detection.get("timestamp"),  # Use timestamp as first_seen
                     "last_seen": detection.get("timestamp"),   # Use timestamp as last_seen
-                    "age_seconds": 0  # Recent detection
+                    "age_seconds": 0,  # Recent detection
+                    # Color information from CV system
+                    "color_rgb": detection.get("color_rgb"),
+                    "color_hsv": detection.get("color_hsv"),
+                    "color_hex": detection.get("color_hex"),
+                    "color_name": detection.get("color_name"),
+                    "color_confidence": detection.get("color_confidence"),
+                    "extraction_method": detection.get("extraction_method")
                 }
 
                 # Skip objects without valid coordinates
@@ -596,7 +610,7 @@ if __name__ == "__main__":
     print("🚀 Starting Live CV System API Server...")
     print("📡 Connecting to MongoDB at localhost:27017")
     print("📊 Database: warehouse_tracking")
-    print("📦 Collection: tracked_objects")
+    print("📦 Collection: detections")
     print("🌐 API will be available at: http://localhost:8000")
     print("-" * 50)
     

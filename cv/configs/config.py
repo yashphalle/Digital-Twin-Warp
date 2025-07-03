@@ -141,7 +141,7 @@ class Config:
     # MongoDB connection
     MONGO_URI = "mongodb://localhost:27017/"
     DATABASE_NAME = "warehouse_tracking"
-    COLLECTION_NAME = "tracked_objects"
+    COLLECTION_NAME = "detections"  # Changed to match CV system
     
     # Database behavior
     AUTO_CREATE_INDEXES = True

@@ -1691,7 +1691,7 @@ class GPUCompleteWarehouseTracker:
 class MultiCameraWarehouseSystem:
     """Multi-camera warehouse tracking system with configurable GUI and camera selection"""
 
-    def __init__(self, active_cameras, gui_cameras, enable_gui= False, enable_console_logging=True,
+    def __init__(self, active_cameras, gui_cameras, enable_gui= True, enable_console_logging=True,
                  log_interval=30, enable_cross_camera_tracking=True, save_to_db=True,
                  performance_monitoring=True, window_width=800, window_height=600, arrange_windows=True):
 
@@ -2213,9 +2213,9 @@ elif CAMERA_GROUP.startswith('SINGLE'):
         ACTIVE_CAMERAS = [8]
         GUI_CAMERAS = [8]
 else:
-    ACTIVE_CAMERAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # All cameras (default)
-    GUI_CAMERAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    print("🔥 RUNNING ALL CAMERAS: 1-11")
+    ACTIVE_CAMERAS = [8]  # All cameras (default)
+    GUI_CAMERAS = [8]
+    print("🔥 RUNNING ALL CAMERAS: 11")
 
 # 🖥️ GUI CONFIGURATION
 ENABLE_GUI = True  # Set to False for headless mode (no windows) - RE-ENABLED WITH OPENCV 4.8.1.78

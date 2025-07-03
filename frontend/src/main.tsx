@@ -91,6 +91,207 @@ const CameraFeed = ({ cameraId, status }) => {
   );
 };
 
+// Object Details Sidebar Component
+const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
+  if (!isOpen || !object) return null;
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHour = Math.floor(diffMin / 60);
+
+      if (diffSec < 60) return `${diffSec} sec ago`;
+      if (diffMin < 60) return `${diffMin} min ago`;
+      if (diffHour < 24) return `${diffHour} hour ago`;
+      return date.toLocaleDateString();
+    } catch {
+      return 'Invalid date';
+    }
+  };
+
+  return (
+    <div className={`fixed right-0 top-0 h-full w-80 bg-gray-800 border-l border-gray-700 transform transition-transform duration-300 ease-in-out z-50 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-700">
+        <h2 className="text-lg font-semibold text-white">Object Details</h2>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-white transition-colors"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="p-4 overflow-y-auto h-full pb-20">
+        <div className="space-y-4">
+          {/* Object ID */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-1">Object ID</div>
+            <div className="text-xl font-bold text-blue-400">
+              {object.persistent_id || object.global_id || 'Unknown'}
+            </div>
+          </div>
+
+          {/* Camera Info */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-1">📹 Camera</div>
+            <div className="text-white font-medium">Camera {object.camera_id || 'Unknown'}</div>
+          </div>
+
+          {/* Timing */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-1">⏰ Last Seen</div>
+            <div className="text-white">
+              {formatTimestamp(object.last_seen || object.timestamp)}
+            </div>
+          </div>
+
+          {/* Detection Quality */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-2">🎯 Detection Quality</div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-300">Confidence:</span>
+                <span className="text-green-400 font-medium">
+                  {object.confidence ? `${(object.confidence * 100).toFixed(1)}%` : 'N/A'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Area:</span>
+                <span className="text-white">{object.area?.toLocaleString() || 'N/A'} px</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Color Information */}
+          {(object.color_rgb || object.color_hex || object.color_name) && (
+            <div className="bg-gray-700 rounded-lg p-3">
+              <div className="text-sm text-gray-400 mb-2">🎨 Object Color</div>
+              <div className="space-y-2">
+                {/* Color Swatch */}
+                <div className="flex items-center space-x-3">
+                  <div
+                    className="w-8 h-8 rounded border-2 border-gray-500"
+                    style={{
+                      backgroundColor: object.color_rgb
+                        ? `rgb(${object.color_rgb[0]}, ${object.color_rgb[1]}, ${object.color_rgb[2]})`
+                        : object.color_hex || '#808080'
+                    }}
+                  ></div>
+                  <div>
+                    <div className="text-white font-medium">
+                      {object.color_name || 'Unknown'}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {object.color_hex || 'No hex value'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Color Values */}
+                {object.color_rgb && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">RGB:</span>
+                    <span className="text-white font-mono text-sm">
+                      ({object.color_rgb[0]}, {object.color_rgb[1]}, {object.color_rgb[2]})
+                    </span>
+                  </div>
+                )}
+
+                {object.color_hsv && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">HSV:</span>
+                    <span className="text-white font-mono text-sm">
+                      ({object.color_hsv[0]}, {object.color_hsv[1]}, {object.color_hsv[2]})
+                    </span>
+                  </div>
+                )}
+
+                {object.color_confidence !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Color Quality:</span>
+                    <span className={`font-medium ${object.color_confidence > 0.7 ? 'text-green-400' : object.color_confidence > 0.4 ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {(object.color_confidence * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Coordinates */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-2">📍 Coordinates</div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-300">Pixel:</span>
+                <span className="text-white">
+                  ({object.center?.[0] || 'N/A'}, {object.center?.[1] || 'N/A'})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Physical:</span>
+                <span className="text-cyan-400 font-medium">
+                  ({object.physical_x_ft?.toFixed(1) || 'N/A'}, {object.physical_y_ft?.toFixed(1) || 'N/A'}) ft
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Status:</span>
+                <span className={`font-medium ${object.coordinate_status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'}`}>
+                  {object.coordinate_status || 'Unknown'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Tracking Info */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-2">🔄 Tracking</div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-300">Status:</span>
+                <span className={`font-medium ${object.tracking_status === 'existing' ? 'text-orange-400' : object.tracking_status === 'new' ? 'text-green-400' : 'text-gray-400'}`}>
+                  {object.tracking_status || 'Unknown'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Times Seen:</span>
+                <span className="text-white">{object.times_seen || 1}</span>
+              </div>
+              {object.similarity_score && (
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Similarity:</span>
+                  <span className="text-blue-400 font-medium">
+                    {(object.similarity_score * 100).toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Raw Data (Collapsible) */}
+          <details className="bg-gray-700 rounded-lg">
+            <summary className="p-3 cursor-pointer text-sm text-gray-400 hover:text-white">
+              🔧 Raw Data
+            </summary>
+            <div className="px-3 pb-3">
+              <pre className="text-xs text-gray-300 bg-gray-800 p-2 rounded overflow-x-auto">
+                {JSON.stringify(object, null, 2)}
+              </pre>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main App Component
 const LiveWarehouse = () => {
   const [objects, setObjects] = useState([]);
@@ -104,6 +305,33 @@ const LiveWarehouse = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedObject, setSelectedObject] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Handle object selection
+  const handleObjectClick = (obj) => {
+    setSelectedObject(obj);
+    setSidebarOpen(true);
+  };
+
+  // Handle clicking outside to deselect
+  const handleBackgroundClick = () => {
+    setSelectedObject(null);
+    setSidebarOpen(false);
+  };
+
+  // Handle ESC key to close sidebar
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && sidebarOpen) {
+        setSelectedObject(null);
+        setSidebarOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [sidebarOpen]);
 
   const fetchObjects = async () => {
     try {
@@ -197,7 +425,7 @@ const LiveWarehouse = () => {
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                 Live CV System Connected
               </span>
-              <span>Objects: {objects.length}</span>
+              <span>Objects: {objects.length}{selectedObject ? ` | Selected: ${selectedObject.persistent_id || selectedObject.global_id}` : ''}</span>
               <span className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
                 Warehouse: 180ft × 90ft (45ft × 30ft Camera 8 active)
@@ -237,8 +465,8 @@ const LiveWarehouse = () => {
                     <span className="text-gray-400">Object Bounding Boxes</span>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                    <span className="text-gray-400">Object Centers</span>
+                    <div className="w-6 h-6 bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 border border-white rounded-sm"></div>
+                    <span className="text-gray-400">Real Object Colors</span>
                   </div>
                 </div>
               </div>
@@ -248,11 +476,12 @@ const LiveWarehouse = () => {
                 <div className="relative">
                   {/* Warehouse boundary - Properly oriented: 180ft width (horizontal) × 90ft length (vertical) */}
                   <div
-                    className="relative bg-gray-600 border-2 border-gray-500 rounded-lg"
+                    className="relative bg-gray-600 border-2 border-gray-500 rounded-lg cursor-pointer"
                     style={{
                       width: `800px`, // Fixed width for better visualization
                       height: `400px`, // Height maintains 180:90 = 2:1 aspect ratio
                     }}
+                    onClick={handleBackgroundClick}
                   >
                     {/* Grid lines every 30ft */}
                     <div className="absolute inset-0 opacity-20">
@@ -358,22 +587,43 @@ const LiveWarehouse = () => {
                       const centerX = ((180 - globalX) / 180) * 100; // Flipped: Camera 8 → low % → LEFT side
                       const centerY = (globalY / 90) * 100;  // Y-axis: top-to-bottom
 
+                      const isSelected = selectedObject?.persistent_id === obj.persistent_id;
+                      const objectId = obj.persistent_id || obj.global_id || 'Unknown';
+
                       return (
                         <div
                           key={obj.persistent_id}
-                          className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                          className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
                           style={{
                             left: `${centerX}%`,
                             top: `${centerY}%`,
-                            zIndex: 10
+                            zIndex: isSelected ? 20 : 10
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleObjectClick(obj);
                           }}
                         >
-                          {/* Small Brown Box */}
-                          <div className="w-6 h-6 bg-amber-600 bg-opacity-60 border-2 border-white shadow-lg"></div>
-
-                          {/* Object Info Tooltip */}
-                          <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-xs whitespace-nowrap opacity-90">
-                            ID: {obj.persistent_id} | ({globalX.toFixed(1)}, {globalY.toFixed(1)})ft
+                          {/* Clean Object Box with Real Color */}
+                          <div
+                            className={`w-8 h-8 border-2 shadow-lg rounded-sm transition-all duration-200 hover:scale-110 ${
+                              isSelected
+                                ? 'border-blue-400 border-4 scale-110'
+                                : 'border-white hover:border-gray-300'
+                            }`}
+                            style={{
+                              backgroundColor: obj.color_rgb
+                                ? `rgb(${obj.color_rgb[0]}, ${obj.color_rgb[1]}, ${obj.color_rgb[2]})`
+                                : obj.color_hex
+                                ? obj.color_hex
+                                : '#d97706', // Fallback amber color
+                              opacity: isSelected ? 1 : 0.85
+                            }}
+                          >
+                            {/* Small ID Label */}
+                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-900 bg-opacity-90 text-white px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap">
+                              {objectId}
+                            </div>
                           </div>
                         </div>
                       );
@@ -437,8 +687,18 @@ const LiveWarehouse = () => {
           </div>
         </div>
 
+        {/* Object Details Sidebar */}
+        <ObjectDetailsSidebar
+          object={selectedObject}
+          isOpen={sidebarOpen}
+          onClose={() => {
+            setSelectedObject(null);
+            setSidebarOpen(false);
+          }}
+        />
+
         {/* Right Sidebar */}
-        <div className="w-80 bg-gray-800 border-l border-gray-700 p-4 space-y-6">
+        <div className={`w-80 bg-gray-800 border-l border-gray-700 p-4 space-y-6 transition-all duration-300 ${sidebarOpen ? 'mr-80' : ''}`}>
           {/* Stats */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Live Analytics</h3>
