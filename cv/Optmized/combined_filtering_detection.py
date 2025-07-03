@@ -20,6 +20,98 @@ from pallet_detector_simple import SimplePalletDetector
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class CoordinateMapper:
+    """Maps pixel coordinates to real-world coordinates using homography"""
+
+    def __init__(self, floor_width=45.0, floor_length=30.0, camera_id=None):
+        """Initialize coordinate mapper with floor dimensions in FEET"""
+        self.floor_width_ft = floor_width  # Floor width in feet
+        self.floor_length_ft = floor_length  # Floor length in feet
+        self.camera_id = camera_id  # Add camera ID for offset calculation
+        self.homography_matrix = None
+        self.is_calibrated = False
+
+        # Column 3 cameras (8,9,10,11) use direct global coordinate mapping
+        # Calibration files map directly to warehouse coordinates - no offset transformation needed
+        # This will be expanded for other columns when they are activated
+
+        logger.info(f"Coordinate mapper initialized - Floor: {floor_width:.1f}ft x {floor_length:.1f}ft")
+        if camera_id:
+            logger.info(f"Camera ID: {camera_id}")
+            logger.info(f"Camera {camera_id}: Using direct global coordinate mapping")
+
+    def load_calibration(self, filename=None):
+        """Load calibration from JSON file"""
+        if filename is None:
+            # Auto-generate filename based on camera ID
+            if self.camera_id:
+                filename = f"../configs/warehouse_calibration_camera_{self.camera_id}.json"
+            else:
+                filename = "../configs/warehouse_calibration.json"
+
+        # Handle relative paths from cv/Optmized directory
+        if not os.path.isabs(filename) and not filename.startswith('../'):
+            filename = f"../{filename}"
+
+        try:
+            import json
+            with open(filename, 'r') as file:
+                calibration_data = json.load(file)
+
+            # Extract warehouse dimensions
+            warehouse_dims = calibration_data.get('warehouse_dimensions', {})
+            self.floor_width_ft = warehouse_dims.get('width_feet', self.floor_width_ft)
+            self.floor_length_ft = warehouse_dims.get('length_feet', self.floor_length_ft)
+
+            # Extract corner points
+            image_corners = np.array(calibration_data['image_corners'], dtype=np.float32)
+            real_world_corners = np.array(calibration_data['real_world_corners'], dtype=np.float32)
+
+            # Validate corner points
+            if len(image_corners) != 4 or len(real_world_corners) != 4:
+                raise ValueError("Calibration must contain exactly 4 corner points")
+
+            # Calculate homography from image points to real-world points
+            self.homography_matrix = cv2.findHomography(image_corners, real_world_corners)[0]
+            self.is_calibrated = True
+
+            logger.info(f"Coordinate calibration loaded from: {filename}")
+            logger.info(f"Camera local area: {self.floor_width_ft:.1f}ft x {self.floor_length_ft:.1f}ft")
+
+            # Log the coordinate transformation for Column 3 cameras
+            if self.camera_id in [8, 9, 10, 11]:
+                logger.info(f"Camera {self.camera_id} coordinate mapping: Direct mapping to global coordinates")
+
+            logger.info(f"Coordinate mapper initialized - Calibrated: {self.is_calibrated}")
+
+        except Exception as e:
+            logger.error(f"Failed to load calibration: {e}")
+            self.is_calibrated = False
+
+    def pixel_to_real(self, pixel_x, pixel_y):
+        """Convert pixel coordinates to real-world coordinates in FEET with warehouse offset"""
+        if not self.is_calibrated or self.homography_matrix is None:
+            return None, None
+
+        try:
+            # Apply homography transformation
+            pixel_point = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
+            real_point = cv2.perspectiveTransform(pixel_point, self.homography_matrix)
+
+            # Extract global coordinates (in feet) - calibration files now use direct global mapping
+            global_x = float(real_point[0][0][0])
+            global_y = float(real_point[0][0][1])
+
+            # For Column 3 cameras (8,9,10,11), coordinates are already global
+            # No offset transformation needed since calibration files map directly to global coordinates
+            logger.debug(f"Camera {self.camera_id}: Pixel ({pixel_x}, {pixel_y}) → Global ({global_x:.1f}ft, {global_y:.1f}ft)")
+
+            return global_x, global_y
+
+        except Exception as e:
+            logger.error(f"Error in pixel_to_real conversion: {e}")
+            return None, None
+
 class CombinedFilteringDetector:
     """Combined area and grid cell filtering with false positive analysis"""
     
@@ -44,6 +136,11 @@ class CombinedFilteringDetector:
         # Detection components
         self.fisheye_corrector = OptimizedFisheyeCorrector(Config.FISHEYE_LENS_MM)
         self.pallet_detector = SimplePalletDetector()
+
+        # Coordinate mapping for physical coordinates
+        self.coordinate_mapper = CoordinateMapper(camera_id=camera_id)
+        self.coordinate_mapper_initialized = False
+        self._initialize_coordinate_mapper()
         
         # FINALIZED DETECTION PARAMETERS
         self.pallet_detector.confidence_threshold = 0.1
@@ -84,6 +181,23 @@ class CombinedFilteringDetector:
         logger.info(f"Prompts: {self.pallet_detector.sample_prompts}")
         logger.info(f"Area filter: {self.MIN_AREA} - {self.MAX_AREA} pixels")
         logger.info(f"Grid cell size: {self.CELL_SIZE}x{self.CELL_SIZE} pixels")
+
+    def _initialize_coordinate_mapper(self):
+        """Initialize coordinate mapper with camera-specific calibration"""
+        try:
+            calibration_file = f"../configs/warehouse_calibration_camera_{self.camera_id}.json"
+            self.coordinate_mapper.load_calibration(calibration_file)
+
+            if self.coordinate_mapper.is_calibrated:
+                self.coordinate_mapper_initialized = True
+                logger.info(f"✅ Coordinate mapper initialized for {self.camera_name}")
+                logger.info(f"   Coverage area: {self.coordinate_mapper.floor_width_ft:.1f}ft x {self.coordinate_mapper.floor_length_ft:.1f}ft")
+            else:
+                logger.warning(f"⚠️ Coordinate mapper not calibrated for {self.camera_name}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize coordinate mapper for {self.camera_name}: {e}")
+            self.coordinate_mapper_initialized = False
     
     def connect_camera(self) -> bool:
         """Connect to the camera"""
@@ -138,13 +252,60 @@ class CombinedFilteringDetector:
         """Get all 9 cells (current + 8 neighbors) for a given cell"""
         cell_x, cell_y = cell
         neighbors = []
-        
+
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 neighbor_cell = (cell_x + dx, cell_y + dy)
                 neighbors.append(neighbor_cell)
-        
+
         return neighbors
+
+    def translate_to_physical_coordinates(self, detection: Dict, frame_width: int, frame_height: int) -> Dict:
+        """Translate detection pixel coordinates to physical warehouse coordinates"""
+        if not self.coordinate_mapper_initialized:
+            # Add placeholder physical coordinates if mapper not available
+            detection['physical_x_ft'] = None
+            detection['physical_y_ft'] = None
+            detection['coordinate_status'] = 'MAPPER_NOT_AVAILABLE'
+            return detection
+
+        try:
+            # Get center point from detection
+            center = detection.get('center')
+            if not center:
+                center = self.calculate_center(detection['bbox'])
+                detection['center'] = center
+
+            center_x, center_y = center
+
+            # Scale coordinates to calibration frame size (4K) for accurate coordinate mapping
+            # Calibration files are based on 3840x2160 resolution
+            scale_x = 3840 / frame_width
+            scale_y = 2160 / frame_height
+
+            scaled_center_x = center_x * scale_x
+            scaled_center_y = center_y * scale_y
+
+            # Convert to physical coordinates using coordinate mapper
+            physical_x, physical_y = self.coordinate_mapper.pixel_to_real(scaled_center_x, scaled_center_y)
+
+            if physical_x is not None and physical_y is not None:
+                detection['physical_x_ft'] = round(physical_x, 2)
+                detection['physical_y_ft'] = round(physical_y, 2)
+                detection['coordinate_status'] = 'SUCCESS'
+                logger.debug(f"Pixel ({center_x}, {center_y}) → Physical ({physical_x:.2f}ft, {physical_y:.2f}ft)")
+            else:
+                detection['physical_x_ft'] = None
+                detection['physical_y_ft'] = None
+                detection['coordinate_status'] = 'CONVERSION_FAILED'
+
+        except Exception as e:
+            logger.error(f"Error translating coordinates: {e}")
+            detection['physical_x_ft'] = None
+            detection['physical_y_ft'] = None
+            detection['coordinate_status'] = 'ERROR'
+
+        return detection
     
     def apply_area_filter(self, detections: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Apply area-based filtering and return accepted/rejected"""
@@ -243,6 +404,7 @@ class CombinedFilteringDetector:
         logger.info("  'g' - Toggle grid display")
         logger.info("  'c' - Toggle center points display")
         logger.info("  'r' - Toggle filter reason display")
+        logger.info("  's' - Print physical coordinates summary")
         logger.info("=" * 50)
         
         while self.running:
@@ -282,6 +444,8 @@ class CombinedFilteringDetector:
                 elif key == ord('r'):  # Toggle filter reasons
                     self.show_filter_reasons = not self.show_filter_reasons
                     logger.info(f"Filter reasons: {'ON' if self.show_filter_reasons else 'OFF'}")
+                elif key == ord('s'):  # Print physical coordinates summary
+                    self.print_physical_coordinates_summary()
                 
             except Exception as e:
                 logger.error(f"Error in detection loop: {e}")
@@ -312,13 +476,18 @@ class CombinedFilteringDetector:
         try:
             # Stage 1: Raw detection
             self.raw_detections = self.pallet_detector.detect_pallets(processed_frame)
-            
+
             # Stage 2: Area filtering
             self.area_filtered_detections, self.filtered_out_by_area = self.apply_area_filter(self.raw_detections)
-            
+
             # Stage 3: Grid cell filtering
             self.final_accepted_detections, self.filtered_out_by_grid = self.apply_grid_cell_filter(self.area_filtered_detections)
-            
+
+            # Stage 4: Physical coordinate translation for final accepted detections
+            frame_height, frame_width = processed_frame.shape[:2]
+            for detection in self.final_accepted_detections:
+                self.translate_to_physical_coordinates(detection, frame_width, frame_height)
+
         except Exception as e:
             logger.error(f"Detection failed: {e}")
             self.raw_detections = []
@@ -402,6 +571,11 @@ class CombinedFilteringDetector:
             area = detection.get('area', 0)
             grid_cell = detection['grid_cell']
 
+            # Physical coordinates
+            physical_x = detection.get('physical_x_ft')
+            physical_y = detection.get('physical_y_ft')
+            coord_status = detection.get('coordinate_status', 'UNKNOWN')
+
             x1, y1, x2, y2 = bbox
 
             # Green for accepted
@@ -413,22 +587,31 @@ class CombinedFilteringDetector:
                 cv2.circle(result_frame, center, 8, color, -1)
                 cv2.circle(result_frame, center, 8, (255, 255, 255), 2)
 
-            # Labels
+            # Labels with physical coordinates
             label = f"PALLET: {area:.0f}"
             conf_label = f"Conf: {confidence:.3f}"
             cell_label = f"Cell: ({grid_cell[0]},{grid_cell[1]})"
 
-            cv2.putText(result_frame, label, (x1, y1-45), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            cv2.putText(result_frame, conf_label, (x1, y1-25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            cv2.putText(result_frame, cell_label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            # Physical coordinate label
+            if physical_x is not None and physical_y is not None:
+                coord_label = f"Physical: ({physical_x:.1f}ft, {physical_y:.1f}ft)"
+                coord_color = (0, 255, 255)  # Cyan for physical coordinates
+            else:
+                coord_label = f"Physical: {coord_status}"
+                coord_color = (0, 0, 255)  # Red for failed coordinates
+
+            cv2.putText(result_frame, label, (x1, y1-65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(result_frame, conf_label, (x1, y1-45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(result_frame, cell_label, (x1, y1-25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            cv2.putText(result_frame, coord_label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, coord_color, 1)
 
         return result_frame
 
     def _draw_info_overlay(self, frame: np.ndarray) -> np.ndarray:
         """Draw comprehensive filtering information overlay"""
-        # Background for text
+        # Background for text (expanded for coordinate info)
         overlay = frame.copy()
-        cv2.rectangle(overlay, (10, 10), (700, 280), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (10, 10), (700, 320), (0, 0, 0), -1)
         frame = cv2.addWeighted(frame, 0.7, overlay, 0.3, 0)
 
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -474,7 +657,25 @@ class CombinedFilteringDetector:
         cv2.putText(frame, f"Grid: {self.CELL_SIZE}x{self.CELL_SIZE} cells, 3x3 exclusion", (20, y_offset), font, 0.4, color, 1)
 
         y_offset += 20
-        cv2.putText(frame, "Controls: g=Grid, c=Centers, r=Reasons, n/p=Prompt", (20, y_offset), font, 0.4, (255, 255, 255), 1)
+        cv2.putText(frame, "Controls: g=Grid, c=Centers, r=Reasons, n/p=Prompt, s=Summary", (20, y_offset), font, 0.4, (255, 255, 255), 1)
+
+        # Coordinate mapping status
+        y_offset += 25
+        cv2.putText(frame, f"COORDINATE MAPPING:", (20, y_offset), font, 0.5, (255, 255, 255), 1)
+
+        y_offset += 20
+        if self.coordinate_mapper_initialized:
+            coord_status = "✅ ENABLED"
+            coord_color = (0, 255, 0)
+            # Count successful coordinate translations
+            successful_coords = sum(1 for det in self.final_accepted_detections
+                                  if det.get('coordinate_status') == 'SUCCESS')
+            cv2.putText(frame, f"{coord_status} - {successful_coords}/{len(self.final_accepted_detections)} translated",
+                       (20, y_offset), font, 0.4, coord_color, 1)
+        else:
+            coord_status = "❌ DISABLED"
+            coord_color = (0, 0, 255)
+            cv2.putText(frame, f"{coord_status} - Calibration not loaded", (20, y_offset), font, 0.4, coord_color, 1)
 
         return frame
 
@@ -490,28 +691,69 @@ class CombinedFilteringDetector:
 
         logger.info(f"Stopped detection for {self.camera_name}")
 
+    def print_physical_coordinates_summary(self):
+        """Print summary of detected pallets with their physical coordinates"""
+        if not self.final_accepted_detections:
+            logger.info("No pallets detected")
+            return
+
+        logger.info("=" * 60)
+        logger.info(f"PHYSICAL COORDINATES SUMMARY - {self.camera_name}")
+        logger.info("=" * 60)
+
+        for i, detection in enumerate(self.final_accepted_detections, 1):
+            confidence = detection['confidence']
+            area = detection.get('area', 0)
+            center = detection['center']
+            physical_x = detection.get('physical_x_ft')
+            physical_y = detection.get('physical_y_ft')
+            coord_status = detection.get('coordinate_status', 'UNKNOWN')
+
+            logger.info(f"Pallet {i}:")
+            logger.info(f"  Pixel Center: ({center[0]}, {center[1]})")
+            logger.info(f"  Confidence: {confidence:.3f}")
+            logger.info(f"  Area: {area:.0f} pixels")
+
+            if physical_x is not None and physical_y is not None:
+                logger.info(f"  Physical Location: ({physical_x:.2f}ft, {physical_y:.2f}ft)")
+                logger.info(f"  Coordinate Status: ✅ {coord_status}")
+            else:
+                logger.info(f"  Physical Location: Not available")
+                logger.info(f"  Coordinate Status: ❌ {coord_status}")
+            logger.info("")
+
+        # Summary statistics
+        successful_coords = sum(1 for det in self.final_accepted_detections
+                              if det.get('coordinate_status') == 'SUCCESS')
+        logger.info(f"Coordinate Translation: {successful_coords}/{len(self.final_accepted_detections)} successful")
+        logger.info("=" * 60)
+
 
 def main():
     """Main function"""
-    print("COMBINED FILTERING FOR PALLET DETECTION")
-    print("=" * 50)
-    print("Combines finalized Area + Grid Cell filtering")
-    print("Camera: 11")
+    print("COMBINED FILTERING FOR PALLET DETECTION WITH PHYSICAL COORDINATES")
+    print("=" * 70)
+    print("Combines finalized Area + Grid Cell filtering + Physical Coordinate Translation")
+    print("Camera: 8 (Column 3 - Bottom)")
     print("Prompts: ['pallet wrapped in plastic', 'stack of goods on pallet']")
     print("Confidence: 0.1")
     print("Area Filter: 10,000 - 100,000 pixels")
     print("Grid Filter: 40x40 pixel cells with 3x3 exclusion")
-    print("=" * 50)
+    print("Physical Coordinates: Warehouse coordinate system (feet)")
+    print("=" * 70)
     print("\nFiltering Pipeline:")
-    print("1. Raw Detection → Area Filter → Grid Filter → Final Results")
+    print("1. Raw Detection → Area Filter → Grid Filter → Physical Coordinates → Final Results")
     print("2. Shows why each detection was rejected")
-    print("3. Color coding:")
-    print("   - Green: Final accepted pallets")
+    print("3. Translates pixel coordinates to physical warehouse coordinates")
+    print("4. Color coding:")
+    print("   - Green: Final accepted pallets with physical coordinates")
     print("   - Red: Rejected by area filter")
     print("   - Orange: Rejected by grid filter")
-    print("=" * 50)
+    print("   - Cyan: Physical coordinate labels")
+    print("5. Press 's' to print detailed physical coordinates summary")
+    print("=" * 70)
 
-    detector = CombinedFilteringDetector(camera_id=11)
+    detector = CombinedFilteringDetector(camera_id=8)
 
     try:
         detector.start_detection()

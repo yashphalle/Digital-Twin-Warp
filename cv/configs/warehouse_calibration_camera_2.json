@@ -1,12 +1,12 @@
 {
     "image_corners": [[112, 254], [3766, 281], [3754, 2030], [147, 1949]],
-    "real_world_corners": [[180, 30], [120, 30], [120, 55], [180, 55]],
+    "real_world_corners": [[62, 25], [0, 25], [0, 50], [62, 50]],
     "camera_id": 2,
     "warehouse_area": {
-        "width_ft": 60.0,
+        "width_ft": 62.0,
         "height_ft": 25.0,
-        "description": "Camera 2 - Front Middle 1 area (placeholder calibration)"
+        "description": "Camera 2 - RIGHT MIDDLE area mapped to global coordinates (0-62ft, 25-50ft)"
     },
-    "calibration_notes": "Camera 2 placeholder calibration - needs proper calibration",
+    "calibration_notes": "Camera 2 covers right middle area (0-62ft, 25-50ft) - Left side of screen = 62ft, Right side = 0ft",
     "fisheye_corrected": true
 }

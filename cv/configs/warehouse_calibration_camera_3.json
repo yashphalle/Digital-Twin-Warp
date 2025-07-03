@@ -17,13 +17,13 @@
     "length_meters": 6.858,
     "coverage_zone": {
       "x_start_ft": 0,
-      "x_end_ft": 60,
-      "y_start_ft": 45,
-      "y_end_ft": 67.5,
-      "center_x_ft": 30,
-      "center_y_ft": 56.25,
+      "x_end_ft": 62,
+      "y_start_ft": 50,
+      "y_end_ft": 75,
+      "center_x_ft": 31,
+      "center_y_ft": 62.5,
       "column": 1,
-      "position": "mid-bottom"
+      "position": "right-bottom-1"
     }
   },
   "coordinate_system_info": {
@@ -54,20 +54,20 @@
   ],
   "real_world_corners": [
     [
-      0,
-      45
-    ],
-    [
-      60.0,
-      45
-    ],
-    [
-      60.0,
-      67.5
+      62,
+      50
     ],
     [
       0,
-      67.5
+      50
+    ],
+    [
+      0,
+      75
+    ],
+    [
+      62,
+      75
     ]
   ],
   "calibration_info": {
@@ -75,6 +75,6 @@
     "coordinate_system": "global warehouse coordinates: origin at top-right (0,0), x-axis right-to-left, y-axis top-to-bottom",
     "units": "feet",
     "calibration_status": "FIXED - Global coordinate mapping",
-    "notes": "Camera 3 covers warehouse area (0-60ft, 45-67.5ft). Coordinates now map directly to global warehouse coordinates."
+    "notes": "Camera 3 covers warehouse area (0-62ft, 50-75ft). Right bottom section - Left side of screen = 62ft, Right side = 0ft."
   }
 }

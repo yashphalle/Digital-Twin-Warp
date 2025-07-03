@@ -133,30 +133,30 @@ class WarehouseConfigManager:
             active=False
         )
         
-        # Column 1 (RIGHT side in display, 0-60ft X-axis) - Cameras 1,2,3,4
+        # Column 1 (RIGHT side in display, 0-62ft X-axis) - Cameras 1,2,3,4
         camera_zones[1] = CameraZone(
-            camera_id=1, x_start=0, x_end=60, y_start=0, y_end=22.5,
+            camera_id=1, x_start=0, x_end=62, y_start=0, y_end=25,
             column=1, row=1, camera_name="Camera 1 - Column 1 Top",
             rtsp_url="rtsp://admin:wearewarp!@192.168.0.71:554/Streaming/channels/1",
-            active=False
+            active=True
         )
         camera_zones[2] = CameraZone(
-            camera_id=2, x_start=0, x_end=60, y_start=22.5, y_end=45,
+            camera_id=2, x_start=0, x_end=62, y_start=25, y_end=50,
             column=1, row=2, camera_name="Camera 2 - Column 1 Mid-Top",
             rtsp_url="rtsp://admin:wearewarp!@192.168.0.72:554/Streaming/channels/1",
-            active=False
+            active=True
         )
         camera_zones[3] = CameraZone(
-            camera_id=3, x_start=0, x_end=60, y_start=45, y_end=67.5,
+            camera_id=3, x_start=0, x_end=62, y_start=50, y_end=75,
             column=1, row=3, camera_name="Camera 3 - Column 1 Mid-Bottom",
             rtsp_url="rtsp://admin:wearewarp!@192.168.0.73:554/Streaming/channels/1",
-            active=False
+            active=True
         )
         camera_zones[4] = CameraZone(
-            camera_id=4, x_start=0, x_end=60, y_start=67.5, y_end=90,
+            camera_id=4, x_start=0, x_end=62, y_start=75, y_end=100,
             column=1, row=4, camera_name="Camera 4 - Column 1 Bottom",
             rtsp_url="rtsp://admin:wearewarp!@192.168.0.74:554/Streaming/channels/1",
-            active=False
+            active=True
         )
         
         # Create warehouse config
@@ -164,7 +164,7 @@ class WarehouseConfigManager:
             warehouse_id="warp_main",
             name="WARP Main Warehouse",
             width_ft=180.0,
-            length_ft=90.0,
+            length_ft=100.0,  # Extended to accommodate Camera 4 (75-100ft)
             origin_position="top-right",
             x_axis_direction="right-to-left",
             y_axis_direction="top-to-bottom",

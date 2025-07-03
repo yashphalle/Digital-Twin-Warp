@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Single Camera Display GUI
-Shows feed from Camera 1 in a dedicated GUI window
+Shows feed from Camera 11 in a dedicated GUI window
 """
 
 import cv2

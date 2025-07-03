@@ -21,28 +21,32 @@ interface WarehouseConfig {
 const WorkingWarehouseView: React.FC = () => {
   const [objects, setObjects] = useState<TrackedObject[]>([]);
   const [config] = useState<WarehouseConfig>({
-    width_meters: 10.0,
-    length_meters: 8.0,
+    width_feet: 180.0,
+    length_feet: 100.0,
+    width_meters: 54.86,  // 180ft converted to meters
+    length_meters: 30.48, // 100ft converted to meters
     calibrated: true
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCameraZones, setShowCameraZones] = useState(true);
 
-  // Camera zones for Phase 1 (Column 3 active)
+  // Camera zones - UPDATED to match calibration files
   const cameraZones = [
+    // Column 3 (Left side of screen) - Cameras 8,9,10,11
     { id: 8, name: "Camera 8", x_start: 120, x_end: 180, y_start: 0, y_end: 25, active: true },
     { id: 9, name: "Camera 9", x_start: 120, x_end: 180, y_start: 25, y_end: 50, active: true },
     { id: 10, name: "Camera 10", x_start: 120, x_end: 180, y_start: 50, y_end: 75, active: true },
-    { id: 11, name: "Camera 11", x_start: 120, x_end: 180, y_start: 75, y_end: 90, active: true },
-    // Standby cameras
+    { id: 11, name: "Camera 11", x_start: 120, x_end: 180, y_start: 75, y_end: 100, active: true },
+    // Column 2 (Middle) - Cameras 5,6,7
     { id: 5, name: "Camera 5", x_start: 60, x_end: 120, y_start: 0, y_end: 22.5, active: false },
     { id: 6, name: "Camera 6", x_start: 60, x_end: 120, y_start: 22.5, y_end: 45, active: false },
     { id: 7, name: "Camera 7", x_start: 60, x_end: 120, y_start: 45, y_end: 67.5, active: false },
-    { id: 1, name: "Camera 1", x_start: 0, x_end: 60, y_start: 0, y_end: 22.5, active: false },
-    { id: 2, name: "Camera 2", x_start: 0, x_end: 60, y_start: 22.5, y_end: 45, active: false },
-    { id: 3, name: "Camera 3", x_start: 0, x_end: 60, y_start: 45, y_end: 67.5, active: false },
-    { id: 4, name: "Camera 4", x_start: 0, x_end: 60, y_start: 67.5, y_end: 90, active: false },
+    // Column 1 (Right side of screen) - Cameras 1,2,3,4 - CORRECTED COORDINATES
+    { id: 1, name: "Camera 1", x_start: 0, x_end: 62, y_start: 0, y_end: 25, active: true },
+    { id: 2, name: "Camera 2", x_start: 0, x_end: 62, y_start: 25, y_end: 50, active: true },
+    { id: 3, name: "Camera 3", x_start: 0, x_end: 62, y_start: 50, y_end: 75, active: true },
+    { id: 4, name: "Camera 4", x_start: 0, x_end: 62, y_start: 75, y_end: 100, active: true },
   ];
 
   const fetchObjects = async () => {

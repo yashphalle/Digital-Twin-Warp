@@ -17,13 +17,13 @@
     "length_meters": 6.858,
     "coverage_zone": {
       "x_start_ft": 0,
-      "x_end_ft": 60,
-      "y_start_ft": 67.5,
-      "y_end_ft": 90,
-      "center_x_ft": 30,
-      "center_y_ft": 78.75,
+      "x_end_ft": 62,
+      "y_start_ft": 75,
+      "y_end_ft": 100,
+      "center_x_ft": 31,
+      "center_y_ft": 87.5,
       "column": 1,
-      "position": "bottom"
+      "position": "right-bottom-2"
     }
   },
   "coordinate_system_info": {
@@ -54,20 +54,20 @@
   ],
   "real_world_corners": [
     [
-      0,
-      67.5
-    ],
-    [
-      60.0,
-      67.5
-    ],
-    [
-      60.0,
-      90
+      62,
+      75
     ],
     [
       0,
-      90
+      75
+    ],
+    [
+      0,
+      100
+    ],
+    [
+      62,
+      100
     ]
   ],
   "calibration_info": {
@@ -75,6 +75,6 @@
     "coordinate_system": "local camera coordinates: origin at top-left, x-axis right, y-axis down",
     "units": "feet",
     "calibration_status": "TEMPLATE - Needs manual calibration",
-    "notes": "Camera 4 covers 60ft x 22.5ft area. Local coordinates (0-60ft, 0-22.5ft) are transformed to warehouse coordinates by the CoordinateMapper class."
+    "notes": "Camera 4 covers warehouse area (0-62ft, 75-100ft). Right bottom section - Left side of screen = 62ft, Right side = 0ft."
   }
 }
