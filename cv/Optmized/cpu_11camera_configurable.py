@@ -43,7 +43,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class CPUSimplePalletDetector:
-    """CPU-based pallet detector using same method as combined filtering"""
+    """Hybrid pallet detector: GPU for Grounding DINO inference, CPU for post-processing"""
     
     def __init__(self):
         self.confidence_threshold = 0.1
@@ -51,15 +51,22 @@ class CPUSimplePalletDetector:
         self.current_prompt_index = 0
         self.current_prompt = self.sample_prompts[0]
         
-        # Initialize CPU detection (same as combined filtering)
-        self.device = torch.device("cpu")  # Force CPU
-        logger.info(f"🔍 Initializing CPU pallet detector on {self.device}")
+        # Initialize detection with GPU for Grounding DINO if available
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+            logger.info(f"🚀 Using GPU for Grounding DINO: {torch.cuda.get_device_name()}")
+            logger.info(f"📊 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+        else:
+            self.device = torch.device("cpu")
+            logger.info("⚠️ GPU not available, using CPU for Grounding DINO")
+
+        logger.info(f"🔍 Initializing pallet detector on {self.device}")
         
         # Initialize Grounding DINO model
         self._initialize_grounding_dino()
     
     def _initialize_grounding_dino(self):
-        """Initialize Grounding DINO model for CPU inference (same as combined filtering)"""
+        """Initialize Grounding DINO model for GPU inference (CPU fallback if GPU unavailable)"""
         try:
             from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
             
@@ -69,11 +76,16 @@ class CPUSimplePalletDetector:
             self.processor = AutoProcessor.from_pretrained(model_id)
             logger.info("✅ AutoProcessor loaded successfully")
             
-            # Load model and keep on CPU
+            # Load model and move to selected device (GPU preferred)
             self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
             self.model = self.model.to(self.device)
             self.model.eval()
             logger.info(f"✅ Grounding DINO model loaded on {self.device}")
+
+            # Log GPU memory usage if using GPU
+            if self.device.type == 'cuda':
+                memory_allocated = torch.cuda.memory_allocated() / 1024**3
+                logger.info(f"📊 GPU Memory allocated: {memory_allocated:.2f}GB")
                 
         except Exception as e:
             logger.error(f"Failed to initialize Grounding DINO: {e}")
@@ -97,12 +109,16 @@ class CPUSimplePalletDetector:
                 return_tensors="pt"
             )
             
-            # Move inputs to CPU
+            # Move inputs to selected device (GPU/CPU)
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
-            # CPU inference (no mixed precision)
-            with torch.no_grad():
-                outputs = self.model(**inputs)
+
+            # GPU/CPU inference with automatic mixed precision if GPU available
+            if self.device.type == 'cuda':
+                with torch.no_grad(), torch.amp.autocast('cuda'):
+                    outputs = self.model(**inputs)
+            else:
+                with torch.no_grad():
+                    outputs = self.model(**inputs)
             
             # Process results using SAME METHOD as combined filtering
             results = self.processor.post_process_grounded_object_detection(
@@ -112,6 +128,10 @@ class CPUSimplePalletDetector:
                 text_threshold=self.confidence_threshold,
                 target_sizes=[pil_image.size[::-1]]
             )
+
+            # Clear GPU cache if using GPU to prevent memory buildup
+            if self.device.type == 'cuda':
+                torch.cuda.empty_cache()
             
             # Convert to detection format (SAME as combined filtering)
             detections = []
@@ -342,11 +362,15 @@ class CoordinateMapper:
 class CPUGlobalFeatureDatabase:
     """CPU-based global feature database with CPU SIFT (same as combined filtering)"""
 
-    def __init__(self, database_file: str = "cpu_warehouse_global_features.pkl"):
+    def __init__(self, database_file: str = "cpu_warehouse_global_features.pkl", camera_id: int = 1):
         self.database_file = database_file
+        self.camera_id = camera_id
         self.features = {}
-        self.next_global_id = 1000
+        # Camera-prefixed Global IDs: Camera 8 → 8001, 8002, 8003...
+        self.next_global_id = camera_id * 1000 + 1
         self.load_database()
+
+        logger.info(f"🎯 Camera {camera_id} Global ID range: {camera_id}001 - {camera_id}999")
 
         # Use CPU SIFT (same as combined filtering)
         try:
@@ -384,15 +408,15 @@ class CPUGlobalFeatureDatabase:
                 with open(self.database_file, 'rb') as f:
                     data = pickle.load(f)
                     self.features = data.get('features', {})
-                    self.next_global_id = data.get('next_id', 1000)
+                    self.next_global_id = data.get('next_id', self.camera_id * 1000 + 1)
                 logger.info(f"Loaded {len(self.features)} objects from CPU database")
             else:
                 self.features = {}
-                self.next_global_id = 1000
+                self.next_global_id = self.camera_id * 1000 + 1
         except Exception as e:
             logger.error(f"Error loading CPU database: {e}")
             self.features = {}
-            self.next_global_id = 1000
+            self.next_global_id = self.camera_id * 1000 + 1
 
     def save_database(self):
         """Save feature database to file"""
@@ -421,7 +445,7 @@ class CPUGlobalFeatureDatabase:
                 gray = image_region
 
             # CPU SIFT extraction
-            keypoints, descriptors = self.cpu_sift.detectAndCompute(gray, None)
+            _, descriptors = self.cpu_sift.detectAndCompute(gray, None)
             if descriptors is not None and len(descriptors) >= self.min_matches:
                 return descriptors
             return None
@@ -502,7 +526,7 @@ class CPUGlobalFeatureDatabase:
         self.features[global_id] = feature_data
         self.save_database()
 
-        logger.info(f"🆕 NEW CPU GLOBAL ID: {global_id}")
+        logger.info(f"🆕 NEW CAMERA {self.camera_id} GLOBAL ID: {global_id}")
         return global_id
 
     def update_object(self, global_id: int, features: np.ndarray, detection_info: Dict):
@@ -543,7 +567,9 @@ class CPUGlobalFeatureDatabase:
                     to_remove.append(global_id)
 
         for global_id in to_remove:
-            logger.info(f"🗑️ REMOVED CPU GLOBAL ID: {global_id} - Disappeared for {self.max_disappeared_frames} frames")
+            camera_id = global_id // 1000  # Extract camera ID from global ID
+            object_num = global_id % 1000   # Extract object number
+            logger.info(f"🗑️ REMOVED CAMERA {camera_id} OBJECT #{object_num} (ID: {global_id}) - Disappeared for {self.max_disappeared_frames} frames")
             del self.features[global_id]
 
         if to_remove:
@@ -594,8 +620,8 @@ class CPUCompleteWarehouseTracker:
         self.coordinate_mapper_initialized = False
         self._initialize_coordinate_mapper()
 
-        # CPU global feature database
-        self.global_db = CPUGlobalFeatureDatabase(f"cpu_camera_{camera_id}_global_features.pkl")
+        # CPU global feature database with camera-specific ID ranges
+        self.global_db = CPUGlobalFeatureDatabase(f"cpu_camera_{camera_id}_global_features.pkl", camera_id)
 
         # Color extraction for real object colors
         self.color_extractor = ObjectColorExtractor()
@@ -637,8 +663,9 @@ class CPUCompleteWarehouseTracker:
         self.new_objects = 0
         self.existing_objects = 0
 
-        logger.info(f"CPU warehouse tracker initialized for {self.camera_name}")
-        logger.info(f"All components CPU-based: Detection, SIFT, Coordinate mapping")
+        logger.info(f"Hybrid warehouse tracker initialized for {self.camera_name}")
+        logger.info(f"🚀 Detection: GPU-accelerated Grounding DINO")
+        logger.info(f"🔧 Processing: CPU-based SIFT, Coordinates, Database")
 
     def _initialize_coordinate_mapper(self):
         """Initialize CPU coordinate mapper"""
@@ -1265,8 +1292,8 @@ elif CAMERA_GROUP.startswith('SINGLE'):
         ACTIVE_CAMERAS = [8]
         GUI_CAMERAS = [8]
 else:
-    ACTIVE_CAMERAS = [1]  # All cameras (default)
-    GUI_CAMERAS = [1]
+    ACTIVE_CAMERAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # All cameras (default)
+    GUI_CAMERAS = []
     print("🔥 RUNNING ALL CAMERAS: 1-11")
 
 # 🖥️ GUI CONFIGURATION

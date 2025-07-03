@@ -232,34 +232,23 @@ async def root():
 
 @app.get("/api/tracking/objects")
 async def get_tracked_objects():
-    """Get current tracked objects from live CV system MongoDB"""
+    """Get ALL tracked objects in warehouse (complete warehouse state)"""
     if tracking_collection is None:
         raise HTTPException(status_code=503, detail="MongoDB not connected to CV system")
     
     try:
-        # Get recent detections (last 5 minutes) with physical coordinates
-        five_minutes_ago = datetime.now() - timedelta(minutes=5)
-
-        # Query for recent detections from CV system (handle both timestamp formats)
+        # Get ALL objects with valid physical coordinates (no time filtering)
+        # Show complete warehouse state - let CV system handle object lifecycle
         query = {
-            "$and": [
-                {
-                    "$or": [
-                        {"timestamp": {"$gte": five_minutes_ago}},  # Old format
-                        {"last_seen": {"$gte": five_minutes_ago}},  # New format
-                        {"first_seen": {"$gte": five_minutes_ago}}  # New format
-                    ]
-                },
-                {"physical_x_ft": {"$exists": True, "$ne": None}},
-                {"physical_y_ft": {"$exists": True, "$ne": None}}
-            ]
+            "physical_x_ft": {"$exists": True, "$ne": None},
+            "physical_y_ft": {"$exists": True, "$ne": None}
         }
 
-        # Get detections, excluding MongoDB _id field (sort by most recent timestamp)
+        # Get ALL detections with coordinates, excluding MongoDB _id field
         detections = list(tracking_collection.find(
             query,
             {"_id": 0}
-        ).sort([("last_seen", -1), ("timestamp", -1), ("first_seen", -1)]).limit(100))
+        ).sort([("last_seen", -1), ("timestamp", -1), ("first_seen", -1)]))
         
         logger.info(f"📊 Found {len(detections)} detections in database")
 
@@ -314,7 +303,7 @@ async def get_tracked_objects():
             "count": len(processed_objects),
             "total_in_db": len(detections),
             "timestamp": datetime.now().isoformat(),
-            "source": "live_cv_system"
+            "source": "warehouse_complete_state"
         }
         
     except Exception as e:
