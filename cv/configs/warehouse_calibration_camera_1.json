@@ -1,6 +1,6 @@
 {
     "image_corners": [[112, 254], [3766, 281], [3754, 2030], [147, 1949]],
-    "real_world_corners": [[62, 0], [0, 0], [0, 25], [62, 25]],
+    "real_world_corners": [[60, 0], [0, 0], [0, 25], [60, 25]],
     "camera_id": 1,
     "warehouse_area": {
         "width_ft": 62.0,
