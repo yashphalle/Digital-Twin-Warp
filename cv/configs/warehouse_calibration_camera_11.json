@@ -63,11 +63,11 @@
     ],
     [
       120,
-      90
+      100
     ],
     [
       180,
-      90
+      100
     ]
   ],
   "calibration_info": {
@@ -75,6 +75,6 @@
     "coordinate_system": "local camera coordinates: origin at top-left, x-axis right, y-axis down",
     "units": "feet",
     "calibration_status": "READY - Direct global coordinate mapping",
-    "notes": "Camera 11 real_world_corners now map directly to global coordinates (120-180ft, 75-90ft). No offset transformation needed."
+    "notes": "Camera 11 real_world_corners now map directly to global coordinates (120-180ft, 75-100ft). No offset transformation needed."
   }
 }

@@ -164,8 +164,12 @@ class SharedModelDetector:
             texts = [self.current_prompt] * len(pil_images)
 
             # Process in smaller sub-batches to avoid memory issues
-            max_batch_size = min(8, len(pil_images))  # Process up to 8 at once
+            max_batch_size = min(3, len(pil_images))  # Process up to 3 at once for 6GB GPU
             results = {}
+
+            # Clear GPU cache before processing
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             for i in range(0, len(pil_images), max_batch_size):
                 end_idx = min(i + max_batch_size, len(pil_images))
@@ -193,6 +197,10 @@ class SharedModelDetector:
                     frame_height, frame_width = batch_frames[j].shape[:2]
                     detections = self._process_batch_result(outputs, j, frame_width, frame_height)
                     results[cam_id] = detections
+
+                # Clear GPU memory after each sub-batch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
             processing_time = time.time() - start_time
             total_detections = sum(len(dets) for dets in results.values())
@@ -1295,9 +1303,27 @@ class GPUCompleteWarehouseTracker:
             # Assign results back to detections
             for i, detection in enumerate(detections):
                 if i < len(physical_coords) and not np.isnan(physical_coords[i]).any():
-                    detection['physical_x_ft'] = round(float(physical_coords[i][0]), 2)
-                    detection['physical_y_ft'] = round(float(physical_coords[i][1]), 2)
-                    detection['coordinate_status'] = 'SUCCESS'
+                    raw_x = float(physical_coords[i][0])
+                    raw_y = float(physical_coords[i][1])
+
+                    # Clamp coordinates to valid warehouse range
+                    # Camera 1: 0-62ft x 0-25ft (adjust ranges for other cameras as needed)
+                    if self.camera_id == 1:
+                        clamped_x = max(0.0, min(62.0, raw_x))
+                        clamped_y = max(0.0, min(25.0, raw_y))
+                    else:
+                        # For other cameras, use general warehouse bounds
+                        clamped_x = max(0.0, min(180.0, raw_x))  # Full warehouse width
+                        clamped_y = max(0.0, min(90.0, raw_y))   # Full warehouse height
+
+                    detection['physical_x_ft'] = round(clamped_x, 2)
+                    detection['physical_y_ft'] = round(clamped_y, 2)
+
+                    # Mark if coordinates were clamped
+                    if abs(raw_x - clamped_x) > 0.01 or abs(raw_y - clamped_y) > 0.01:
+                        detection['coordinate_status'] = 'SUCCESS_CLAMPED'
+                    else:
+                        detection['coordinate_status'] = 'SUCCESS'
                 else:
                     detection['physical_x_ft'] = None
                     detection['physical_y_ft'] = None
@@ -2215,7 +2241,7 @@ BATCH_SAVE_SIZE = 10  # Save to DB every N detections (for performance)
 
 # 🚀 BATCH PROCESSING CONFIGURATION
 ENABLE_BATCH_PROCESSING = True  # Use shared model with batch processing
-BATCH_SIZE = 8  # Process N cameras together (maximize GPU utilization)
+BATCH_SIZE = 4  # Process N cameras together (reduced for 6GB GPU)
 SHARED_MODEL_MEMORY_GB = 2  # Single model memory usage
 ENABLE_TRUE_PARALLEL_BATCH = True  # Enable true parallel tensor batching
 ENABLE_GPU_PIPELINE = True  # Move all operations to GPU

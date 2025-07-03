@@ -31,7 +31,7 @@ app.add_middleware(
 # MongoDB connection
 MONGO_URI = "mongodb://localhost:27017/"
 DATABASE_NAME = "warehouse_tracking"
-COLLECTION_NAME = "tracked_objects"
+COLLECTION_NAME = "detections"
 
 try:
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
@@ -237,80 +237,68 @@ async def get_tracked_objects():
         raise HTTPException(status_code=503, detail="MongoDB not connected to CV system")
     
     try:
-        # Get recent objects (last 5 minutes) with real_center coordinates
+        # Get recent detections (last 5 minutes) with physical coordinates
         five_minutes_ago = datetime.now() - timedelta(minutes=5)
-        
-        # Query for recent objects with real_center data
+
+        # Query for recent detections from CV system
         query = {
-            "$or": [
-                {"last_seen": {"$gte": five_minutes_ago}},
-                {"updated_at": {"$gte": five_minutes_ago}},
-                {"_id": {"$exists": True}}  # Fallback to get any objects
+            "$and": [
+                {"timestamp": {"$gte": five_minutes_ago}},
+                {"physical_x_ft": {"$exists": True, "$ne": None}},
+                {"physical_y_ft": {"$exists": True, "$ne": None}}
             ]
         }
-        
-        # Get objects, excluding MongoDB _id field
-        objects = list(tracking_collection.find(
+
+        # Get detections, excluding MongoDB _id field
+        detections = list(tracking_collection.find(
             query,
             {"_id": 0}
-        ).sort([("last_seen", -1), ("updated_at", -1)]).limit(50))
+        ).sort([("timestamp", -1)]).limit(100))
         
-        logger.info(f"📊 Found {len(objects)} objects in database")
-        
-        # Process objects for frontend
+        logger.info(f"📊 Found {len(detections)} detections in database")
+
+        # Process detections for frontend
         processed_objects = []
-        for obj in objects:
+        for detection in detections:
             try:
                 # Convert datetime objects to ISO strings
-                if "first_seen" in obj and isinstance(obj["first_seen"], datetime):
-                    obj["first_seen"] = obj["first_seen"].isoformat()
-                if "last_seen" in obj and isinstance(obj["last_seen"], datetime):
-                    obj["last_seen"] = obj["last_seen"].isoformat()
-                if "created_at" in obj and isinstance(obj["created_at"], datetime):
-                    obj["created_at"] = obj["created_at"].isoformat()
-                if "updated_at" in obj and isinstance(obj["updated_at"], datetime):
-                    obj["updated_at"] = obj["updated_at"].isoformat()
-                
-                # Ensure required fields exist
-                if "persistent_id" not in obj:
+                if "timestamp" in detection and isinstance(detection["timestamp"], datetime):
+                    detection["timestamp"] = detection["timestamp"].isoformat()
+
+                # Create object structure for frontend
+                obj = {
+                    "persistent_id": detection.get("global_id", f"det_{detection.get('_id', 'unknown')}"),
+                    "global_id": detection.get("global_id"),
+                    "camera_id": detection.get("camera_id"),
+                    "bbox": detection.get("bbox", [0, 0, 100, 100]),
+                    "confidence": detection.get("confidence", 0.0),
+                    "area": detection.get("area", 0),
+                    "real_center": [detection.get("physical_x_ft"), detection.get("physical_y_ft")],
+                    "physical_x_ft": detection.get("physical_x_ft"),
+                    "physical_y_ft": detection.get("physical_y_ft"),
+                    "grid_cell": detection.get("grid_cell"),
+                    "times_seen": detection.get("times_seen", 1),
+                    "is_new": detection.get("is_new", False),
+                    "timestamp": detection.get("timestamp"),
+                    "first_seen": detection.get("timestamp"),  # Use timestamp as first_seen
+                    "last_seen": detection.get("timestamp"),   # Use timestamp as last_seen
+                    "age_seconds": 0  # Recent detection
+                }
+
+                # Skip objects without valid coordinates
+                if obj["physical_x_ft"] is None or obj["physical_y_ft"] is None:
                     continue
-                    
-                # Calculate age_seconds if not present
-                if "age_seconds" not in obj:
-                    if "first_seen" in obj:
-                        try:
-                            if isinstance(obj["first_seen"], str):
-                                first_seen = datetime.fromisoformat(obj["first_seen"].replace('Z', '+00:00'))
-                            else:
-                                first_seen = obj["first_seen"]
-                            obj["age_seconds"] = (datetime.now() - first_seen).total_seconds()
-                        except:
-                            obj["age_seconds"] = 0
-                    else:
-                        obj["age_seconds"] = 0
-                
-                # Ensure confidence exists
-                if "confidence" not in obj:
-                    obj["confidence"] = 0.8  # Default confidence
-                
-                # Ensure times_seen exists
-                if "times_seen" not in obj:
-                    obj["times_seen"] = 1
-                
-                # Only include objects with real_center coordinates
-                if "real_center" in obj and obj["real_center"]:
-                    processed_objects.append(obj)
-                    
+
+                processed_objects.append(obj)
+
             except Exception as e:
-                logger.warning(f"⚠️  Error processing object: {e}")
+                logger.warning(f"⚠️ Error processing detection: {e}")
                 continue
-        
-        logger.info(f"✅ Returning {len(processed_objects)} processed objects")
-        
+
         return {
             "objects": processed_objects,
             "count": len(processed_objects),
-            "total_in_db": len(objects),
+            "total_in_db": len(detections),
             "timestamp": datetime.now().isoformat(),
             "source": "live_cv_system"
         }
