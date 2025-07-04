@@ -102,6 +102,10 @@ class WarehouseDatabaseHandler:
                     "last_seen": current_time,
                     "times_seen": 1,
                     "bbox": detection.get('bbox'),
+                    "corners": detection.get('corners'),  # 4-point pixel coordinates
+                    "physical_corners": detection.get('physical_corners'),  # 4-point physical coordinates
+                    "shape_type": detection.get('shape_type', 'rectangle'),
+                    "real_center": detection.get('real_center'),  # Physical center coordinates
                     "confidence": detection.get('confidence'),
                     "area": detection.get('area'),
                     "center": detection.get('center'),
@@ -132,6 +136,10 @@ class WarehouseDatabaseHandler:
                     "$set": {
                         "last_seen": current_time,
                         "bbox": detection.get('bbox'),
+                        "corners": detection.get('corners'),  # 4-point pixel coordinates
+                        "physical_corners": detection.get('physical_corners'),  # 4-point physical coordinates
+                        "shape_type": detection.get('shape_type', 'rectangle'),
+                        "real_center": detection.get('real_center'),  # Physical center coordinates
                         "confidence": detection.get('confidence'),
                         "area": detection.get('area'),
                         "center": detection.get('center'),

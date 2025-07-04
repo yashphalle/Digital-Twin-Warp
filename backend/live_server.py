@@ -267,6 +267,9 @@ async def get_tracked_objects():
                     "global_id": detection.get("global_id"),
                     "camera_id": detection.get("camera_id"),
                     "bbox": detection.get("bbox", [0, 0, 100, 100]),
+                    "corners": detection.get("corners", []),  # 4-point pixel coordinates
+                    "physical_corners": detection.get("physical_corners", []),  # 4-point physical coordinates
+                    "shape_type": detection.get("shape_type", "rectangle"),
                     "confidence": detection.get("confidence", 0.0),
                     "area": detection.get("area", 0),
                     "real_center": [detection.get("physical_x_ft"), detection.get("physical_y_ft")],

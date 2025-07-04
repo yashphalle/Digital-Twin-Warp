@@ -149,10 +149,12 @@ class GPUSIFTPalletDetector:
                         
                         detection = {
                             'bbox': [int(x1), int(y1), int(x2), int(y2)],
+                            'corners': [[int(x1), int(y1)], [int(x2), int(y1)], [int(x2), int(y2)], [int(x1), int(y2)]],  # 4 corners of bounding box
                             'confidence': float(score),
                             'label': label,
                             'area': int((x2 - x1) * (y2 - y1)),
-                            'prompt_used': self.current_prompt
+                            'prompt_used': self.current_prompt,
+                            'shape_type': 'quadrangle'
                         }
                         detections.append(detection)
             
@@ -563,6 +565,69 @@ class ObjectColorExtractor:
             'extraction_method': 'default'
         }
 
+class CoordinateMapper:
+    """GPU SIFT coordinate mapping (same as CPU version)"""
+
+    def __init__(self, floor_width=45.0, floor_length=30.0, camera_id=None):
+        self.floor_width_ft = floor_width
+        self.floor_length_ft = floor_length
+        self.camera_id = camera_id
+        self.homography_matrix = None
+        self.is_calibrated = False
+
+        logger.info(f"GPU SIFT coordinate mapper initialized - Floor: {floor_width:.1f}ft x {floor_length:.1f}ft")
+        if camera_id:
+            logger.info(f"Camera ID: {camera_id}")
+
+    def load_calibration(self, filename=None):
+        """Load calibration from JSON file (same as CPU version)"""
+        if filename is None:
+            if self.camera_id:
+                filename = f"../configs/warehouse_calibration_camera_{self.camera_id}.json"
+            else:
+                filename = "../configs/warehouse_calibration.json"
+
+        if not os.path.isabs(filename) and not filename.startswith('../'):
+            filename = f"../{filename}"
+
+        try:
+            with open(filename, 'r') as file:
+                calibration_data = json.load(file)
+
+            warehouse_dims = calibration_data.get('warehouse_dimensions', {})
+            self.floor_width_ft = warehouse_dims.get('width_feet', self.floor_width_ft)
+            self.floor_length_ft = warehouse_dims.get('length_feet', self.floor_length_ft)
+
+            image_corners = np.array(calibration_data['image_corners'], dtype=np.float32)
+            real_world_corners = np.array(calibration_data['real_world_corners'], dtype=np.float32)
+
+            if len(image_corners) != 4 or len(real_world_corners) != 4:
+                raise ValueError("Calibration must contain exactly 4 corner points")
+
+            self.homography_matrix = cv2.findHomography(image_corners, real_world_corners)[0]
+            self.is_calibrated = True
+            logger.info(f"GPU SIFT coordinate calibration loaded from: {filename}")
+
+        except Exception as e:
+            logger.error(f"Failed to load calibration: {e}")
+            self.is_calibrated = False
+
+    def pixel_to_real(self, pixel_x, pixel_y):
+        """Single point coordinate transformation"""
+        if not self.is_calibrated:
+            return None, None
+
+        try:
+            points = np.array([[pixel_x, pixel_y]], dtype=np.float32).reshape(-1, 1, 2)
+            transformed_points = cv2.perspectiveTransform(points, self.homography_matrix)
+            result = transformed_points.reshape(-1, 2)
+            if len(result) > 0:
+                return float(result[0][0]), float(result[0][1])
+            return None, None
+        except Exception as e:
+            logger.error(f"GPU SIFT coordinate transformation failed: {e}")
+            return None, None
+
 class GPUSIFTWarehouseTracker:
     """GPU SIFT-accelerated warehouse tracking system"""
 
@@ -577,6 +642,11 @@ class GPUSIFTWarehouseTracker:
 
         # Fisheye correction
         self.fisheye_corrector = OptimizedFisheyeCorrector()
+
+        # Coordinate mapping (same as CPU version)
+        self.coordinate_mapper = CoordinateMapper(camera_id=camera_id)
+        self.coordinate_mapper.load_calibration()
+        logger.info(f"✅ GPU SIFT coordinate mapper initialized for Camera {camera_id}")
 
         # GPU SIFT global feature database with camera-specific ID ranges
         self.global_db = GPUSIFTGlobalFeatureDatabase(f"gpu_sift_camera_{camera_id}_global_features.pkl", camera_id)
@@ -633,8 +703,9 @@ class GPUSIFTWarehouseTracker:
         self.grid_filtered_detections = self.apply_grid_filter(self.area_filtered_detections, processed_frame)
 
         # Stage 4: Physical coordinate translation
+        frame_height, frame_width = processed_frame.shape[:2]
         self.coordinate_mapped_detections = self.translate_to_physical_coordinates(
-            self.grid_filtered_detections, processed_frame.shape
+            self.grid_filtered_detections, frame_width, frame_height
         )
 
         # Stage 5: GPU SIFT feature matching and global ID assignment
@@ -714,7 +785,7 @@ class GPUSIFTWarehouseTracker:
             logger.error(f"Grid filtering failed: {e}")
             return detections
 
-    def translate_to_physical_coordinates(self, detections: List[Dict], frame_shape) -> List[Dict]:
+    def translate_to_physical_coordinates(self, detections: List[Dict], frame_width: int, frame_height: int) -> List[Dict]:
         """Translate pixel coordinates to physical warehouse coordinates"""
         try:
             for detection in detections:
@@ -722,22 +793,54 @@ class GPUSIFTWarehouseTracker:
                 center_x = (bbox[0] + bbox[2]) / 2
                 center_y = (bbox[1] + bbox[3]) / 2
 
-                # Get physical coordinates using warehouse config
-                physical_coords = self.warehouse_config.pixel_to_physical(
-                    self.camera_id, center_x, center_y
-                )
+                # Scale coordinates to calibration frame size (4K) for accurate coordinate mapping
+                # Calibration files are based on 3840x2160 resolution
+                scale_x = 3840 / frame_width
+                scale_y = 2160 / frame_height
 
-                if physical_coords:
-                    detection['physical_x_ft'] = physical_coords[0]
-                    detection['physical_y_ft'] = physical_coords[1]
+                scaled_center_x = center_x * scale_x
+                scaled_center_y = center_y * scale_y
+
+                # Get physical coordinates using coordinate mapper with scaled coordinates
+                real_x, real_y = self.coordinate_mapper.pixel_to_real(scaled_center_x, scaled_center_y)
+
+                if real_x is not None and real_y is not None:
+                    detection['physical_x_ft'] = round(real_x, 2)
+                    detection['physical_y_ft'] = round(real_y, 2)
+                    detection['coordinate_status'] = 'SUCCESS'
+                    logger.debug(f"GPU SIFT Camera {self.camera_id}: Pixel ({center_x}, {center_y}) → Scaled ({scaled_center_x:.1f}, {scaled_center_y:.1f}) → Physical ({real_x:.2f}ft, {real_y:.2f}ft)")
                 else:
                     detection['physical_x_ft'] = None
                     detection['physical_y_ft'] = None
+                    detection['coordinate_status'] = 'CONVERSION_FAILED'
+                    logger.debug(f"GPU SIFT Camera {self.camera_id}: Coordinate conversion failed for pixel ({center_x}, {center_y})")
+
+                # Translate all 4 corners to physical coordinates
+                corners = detection.get('corners', [])
+                physical_corners = []
+
+                for corner in corners:
+                    pixel_x, pixel_y = corner
+
+                    # Scale corner coordinates
+                    scaled_x = pixel_x * scale_x
+                    scaled_y = pixel_y * scale_y
+
+                    # Transform to physical coordinates
+                    phys_x, phys_y = self.coordinate_mapper.pixel_to_real(scaled_x, scaled_y)
+
+                    if phys_x is not None and phys_y is not None:
+                        physical_corners.append([round(phys_x, 2), round(phys_y, 2)])
+                    else:
+                        physical_corners.append([None, None])
+
+                detection['physical_corners'] = physical_corners
+                detection['real_center'] = [real_x, real_y] if real_x is not None and real_y is not None else [None, None]
 
             return detections
 
         except Exception as e:
-            logger.error(f"Coordinate translation failed: {e}")
+            logger.error(f"GPU SIFT coordinate translation failed: {e}")
             return detections
 
     def assign_global_ids_gpu_sift(self, detections: List[Dict], frame: np.ndarray) -> List[Dict]:
@@ -798,12 +901,12 @@ class GPUSIFTWarehouseTracker:
             bbox = detection['bbox']
             x1, y1, x2, y2 = bbox
 
-            # Color based on tracking status
+            # Color based on tracking status (same as CPU version)
             status = detection.get('tracking_status', 'unknown')
             if status == 'new':
                 color = (0, 255, 0)  # Green for new objects
             elif status == 'matched':
-                color = (0, 255, 255)  # Yellow for matched objects
+                color = (0, 165, 255)  # Orange for tracked objects
             else:
                 color = (0, 0, 255)  # Red for failed
 
@@ -831,12 +934,37 @@ class GPUSIFTWarehouseTracker:
             cv2.putText(result_frame, info_label, (x1, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             y_offset -= line_height
 
-            # Physical coordinates
-            phys_x = detection.get('physical_x_ft')
-            phys_y = detection.get('physical_y_ft')
-            if phys_x is not None and phys_y is not None:
-                coord_label = f"({phys_x:.1f}, {phys_y:.1f})ft"
-                cv2.putText(result_frame, coord_label, (x1, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            # Bounding box coordinates
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+
+            # Display bounding box coordinates
+            bbox_label = f"BBox:({x1},{y1})-({x2},{y2})"
+            cv2.putText(result_frame, bbox_label, (x1, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+            y_offset -= 15
+
+            # Display center coordinates
+            center_label = f"Center:({center_x},{center_y})"
+            cv2.putText(result_frame, center_label, (x1, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+            y_offset -= 15
+
+            # Display quadrangle corners
+            corners = detection.get('corners', [])
+            if len(corners) == 4:
+                corners_label = f"Corners:4pts"
+                cv2.putText(result_frame, corners_label, (x1, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255), 1)
+
+                # Draw quadrangle outline
+                pts = np.array(corners, np.int32)
+                pts = pts.reshape((-1, 1, 2))
+                cv2.polylines(result_frame, [pts], True, (255, 0, 255), 2)
+
+                # Draw corner points
+                for corner in corners:
+                    cv2.circle(result_frame, tuple(corner), 3, (255, 0, 255), -1)
+
+            # Draw center point
+            cv2.circle(result_frame, (center_x, center_y), 5, color, -1)
 
         # Draw statistics
         stats_text = [
@@ -1003,6 +1131,7 @@ def process_camera_stream(tracker, camera_id: int, camera_name: str, rtsp_url: s
                 original_pixels = original_width * original_height
                 pixel_reduction = (1 - total_pixels / original_pixels) * 100
                 logger.info(f"⚡ Pixel reduction: {pixel_reduction:.1f}% (performance boost)")
+                logger.info(f"🚀 GPU SIFT: {'GPU' if tracker.global_db.use_gpu_sift else 'CPU'} accelerated")
 
                 fps_counter = 0
                 fps_start_time = time.time()
