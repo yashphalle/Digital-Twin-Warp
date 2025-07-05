@@ -33,7 +33,7 @@ class OptimizedPipelineSystem:
         # Initialize OPTIMIZED threading components
         self.queue_manager = OptimizedQueueManager(max_cameras=len(active_cameras))
         self.camera_manager = OptimizedCameraThreadManager(active_cameras, self.queue_manager)
-        self.detection_pool = DetectionThreadPool(num_workers=3, queue_manager=self.queue_manager)  # SAME as original
+        self.detection_pool = DetectionThreadPool(num_workers=6, queue_manager=self.queue_manager)  # INCREASED for better GPU utilization
         
         # Performance monitoring
         self.performance_stats = {
@@ -45,69 +45,69 @@ class OptimizedPipelineSystem:
         # Setup signal handling for clean shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         
-        logger.info(f"✅ OPTIMIZED Pipeline Threading System initialized for cameras: {active_cameras}")
-        logger.info("🎯 KEY OPTIMIZATIONS:")
+        logger.info(f"[OK] OPTIMIZED Pipeline Threading System initialized for cameras: {active_cameras}")
+        logger.info("[OPTIMIZATIONS] KEY FEATURES:")
         logger.info("   - Smart frame skipping BEFORE processing (95% CPU savings)")
         logger.info("   - Enhanced queue management for GPU feeding")
         logger.info("   - SAME tested modules: detection, filtering, coordinates, database")
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
-        logger.info(f"🛑 Received signal {signum}, shutting down optimized system...")
+        logger.info(f"[SIGNAL] Received signal {signum}, shutting down optimized system...")
         self.stop()
         sys.exit(0)
     
     def start(self):
         """Start the optimized threading system"""
         if self.running:
-            logger.warning("⚠️ Optimized system already running")
+            logger.warning("[WARNING] Optimized system already running")
             return
-        
+
         self.running = True
         self.performance_stats['start_time'] = time.time()
-        
-        logger.info("🚀 Starting OPTIMIZED Pipeline Threading System...")
-        
+
+        logger.info("[START] Starting OPTIMIZED Pipeline Threading System...")
+
         try:
             # Start camera threads (OPTIMIZED)
-            logger.info("📹 Starting optimized camera threads...")
+            logger.info("[CAMERAS] Starting optimized camera threads...")
             self.camera_manager.start_camera_threads()
-            
+
             # Start detection pool (SAME as original)
-            logger.info("🔍 Starting detection thread pool...")
+            logger.info("[DETECTION] Starting detection thread pool...")
             self.detection_pool.start_detection_workers()
-            
+
             # Start processing consumer (SAME as original)
-            logger.info("⚙️ Starting processing consumer...")
+            logger.info("[PROCESSING] Starting processing consumer...")
             self.processing_thread = threading.Thread(
                 target=self._basic_processing_consumer,
                 name="OptimizedProcessing",
                 daemon=True
             )
             self.processing_thread.start()
-            
+
             # Start performance monitoring
-            logger.info("📊 Starting performance monitoring...")
+            logger.info("[MONITOR] Starting performance monitoring...")
             self.monitor_thread = threading.Thread(
                 target=self._performance_monitor,
                 name="OptimizedMonitor",
                 daemon=True
             )
             self.monitor_thread.start()
-            
-            logger.info("✅ OPTIMIZED Pipeline Threading System started successfully!")
-            logger.info("🎯 Monitor CPU usage - should drop from 100% to ~20-30%")
-            logger.info("🎯 Monitor GPU usage - should increase from 20% to 80-90%")
+
+            logger.info("[SUCCESS] OPTIMIZED Pipeline Threading System started successfully!")
+            logger.info("[MONITOR] Monitor CPU usage - should drop from 100% to ~20-30%")
+            logger.info("[MONITOR] Monitor GPU usage - should increase from 20% to 80-90%")
             
             # Keep main thread alive
             while self.running:
                 time.sleep(1)
                 
         except KeyboardInterrupt:
-            logger.info("🛑 Keyboard interrupt received")
+            logger.info("[INTERRUPT] Keyboard interrupt received")
             self.stop()
         except Exception as e:
-            logger.error(f"❌ Error in optimized pipeline system: {e}")
+            logger.error(f"[ERROR] Error in optimized pipeline system: {e}")
             self.stop()
     
     def stop(self):
@@ -115,27 +115,27 @@ class OptimizedPipelineSystem:
         if not self.running:
             return
         
-        logger.info("🛑 Stopping OPTIMIZED Pipeline Threading System...")
+        logger.info("[STOP] Stopping OPTIMIZED Pipeline Threading System...")
         self.running = False
-        
+
         # Stop components in reverse order
         if hasattr(self, 'detection_pool'):
             self.detection_pool.stop()
-        
+
         if hasattr(self, 'camera_manager'):
             self.camera_manager.stop_camera_threads()
-        
+
         # Log final performance stats
         self._log_final_stats()
-        
-        logger.info("✅ OPTIMIZED Pipeline Threading System stopped")
+
+        logger.info("[COMPLETE] OPTIMIZED Pipeline Threading System stopped")
     
     def _basic_processing_consumer(self):
         """
         Processing consumer - SAME as original system
         Uses SAME modules: CPUFrameProcessor, filtering, coordinates, database
         """
-        logger.info("✅ Optimized processing consumer started (using existing modules)")
+        logger.info("[START] Optimized processing consumer started (using existing modules)")
 
         # Import existing frame processor (SAME as original)
         from modules.frame_processor import CPUFrameProcessor
@@ -174,10 +174,10 @@ class OptimizedPipelineSystem:
                 )
 
                 processors[camera_id] = frame_processor
-                logger.info(f"✅ Frame processor initialized for Camera {camera_id}")
+                logger.info(f"[OK] Frame processor initialized for Camera {camera_id}")
 
             except Exception as e:
-                logger.error(f"❌ Failed to initialize processor for Camera {camera_id}: {e}")
+                logger.error(f"[ERROR] Failed to initialize processor for Camera {camera_id}: {e}")
 
         processed_count = 0
         saved_count = 0
@@ -195,12 +195,12 @@ class OptimizedPipelineSystem:
                 frame = frame_data.frame
 
                 if not raw_detections:
-                    logger.debug(f"🔍 Camera {camera_id}: No detections found")
+                    logger.debug(f"[DETECTION] Camera {camera_id}: No detections found")
                     continue
 
                 # Get processor for this camera (SAME as original)
                 if camera_id not in processors:
-                    logger.warning(f"❌ No processor for Camera {camera_id}")
+                    logger.warning(f"[WARNING] No processor for Camera {camera_id}")
                     continue
 
                 processor = processors[camera_id]
@@ -239,41 +239,41 @@ class OptimizedPipelineSystem:
 
                     # Log results using existing method (SAME as original)
                     counts = processor.get_detection_counts()
-                    logger.info(f"🔍 Camera {camera_id}: {counts['raw_detections']} raw → {counts['area_filtered_detections']} area → {counts['grid_filtered_detections']} grid → {counts['size_filtered_detections']} size → {counts['final_tracked_detections']} final")
-                    logger.info(f"📊 OPTIMIZED SYSTEM: Processed {processed_count}, Saved {saved_count}, New: {counts['new_objects']}, Existing: {counts['existing_objects']}")
+                    logger.info(f"[RESULTS] Camera {camera_id}: {counts['raw_detections']} raw → {counts['area_filtered_detections']} area → {counts['grid_filtered_detections']} grid → {counts['size_filtered_detections']} size → {counts['final_tracked_detections']} final")
+                    logger.info(f"[STATS] OPTIMIZED SYSTEM: Processed {processed_count}, Saved {saved_count}, New: {counts['new_objects']}, Existing: {counts['existing_objects']}")
 
                 except Exception as e:
-                    logger.error(f"❌ Processing pipeline error for Camera {camera_id}: {e}")
+                    logger.error(f"[ERROR] Processing pipeline error for Camera {camera_id}: {e}")
 
             except Exception as e:
-                logger.error(f"❌ Processing consumer error: {e}")
+                logger.error(f"[ERROR] Processing consumer error: {e}")
                 time.sleep(0.1)
 
-        logger.info("🛑 Optimized processing consumer stopped")
+        logger.info("[STOP] Optimized processing consumer stopped")
     
     def _performance_monitor(self):
         """Monitor system performance and optimization effectiveness"""
-        logger.info("📊 Performance monitoring started")
-        
+        logger.info("[MONITOR] Performance monitoring started")
+
         while self.running:
             try:
                 time.sleep(30)  # Monitor every 30 seconds
-                
+
                 # Get optimization stats
                 camera_stats = self.camera_manager.get_optimization_stats()
                 queue_stats = self.queue_manager.get_optimization_stats()
-                
+
                 # Log performance summary
-                logger.info("🎯 OPTIMIZATION PERFORMANCE SUMMARY:")
+                logger.info("[PERFORMANCE] OPTIMIZATION PERFORMANCE SUMMARY:")
                 logger.info(f"   Expected CPU Savings: {camera_stats.get('expected_cpu_savings', 'N/A')}")
                 logger.info(f"   GPU Feed Efficiency: {queue_stats.get('optimization', {}).get('gpu_feed_efficiency', 'N/A')}")
                 logger.info(f"   Frames Processed: {self.performance_stats['frames_processed']}")
-                
+
                 # Log queue status
                 self.queue_manager.log_optimization_status()
-                
+
             except Exception as e:
-                logger.error(f"❌ Performance monitoring error: {e}")
+                logger.error(f"[ERROR] Performance monitoring error: {e}")
                 time.sleep(5)
     
     def _log_final_stats(self):
@@ -281,9 +281,9 @@ class OptimizedPipelineSystem:
         if self.performance_stats['start_time']:
             runtime = time.time() - self.performance_stats['start_time']
             fps = self.performance_stats['frames_processed'] / runtime if runtime > 0 else 0
-            
-            logger.info("📊 FINAL OPTIMIZATION RESULTS:")
+
+            logger.info("[FINAL] FINAL OPTIMIZATION RESULTS:")
             logger.info(f"   Runtime: {runtime:.1f} seconds")
             logger.info(f"   Frames Processed: {self.performance_stats['frames_processed']}")
             logger.info(f"   Average FPS: {fps:.2f}")
-            logger.info("🎯 Check system monitor for CPU/GPU utilization improvements!")
+            logger.info("[MONITOR] Check system monitor for CPU/GPU utilization improvements!")

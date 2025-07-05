@@ -324,10 +324,10 @@ class CPUCompleteWarehouseTracker:
 # =======================================================
 
 # 🎯 DETECTION CAMERAS: Add camera numbers you want to run detection on
-ACTIVE_CAMERAS = [1]  # Cameras that will detect objects
+ACTIVE_CAMERAS = [1,2,3,4,5,6,7,8,9,10,11]  # Cameras that will detect objects
 
 # 🖥️ GUI CAMERAS: Add camera numbers you want to see windows for
-GUI_CAMERAS = [1]  # Cameras that will show GUI windows (subset of ACTIVE_CAMERAS)
+GUI_CAMERAS = [1,2,3,4,5,6,7,8,9,10,11]  # Cameras that will show GUI windows (subset of ACTIVE_CAMERAS)
 
 # 🎛️ GUI CONFIGURATION
 ENABLE_GUI = True  # Set to False for headless mode

@@ -44,19 +44,24 @@ class OptimizedCameraThreadManager(CameraThreadManager):
             logger.error(f"❌ Camera {camera_id}: Missing components")
             return
 
+        # Connect to camera (SAME method as original working version)
+        if not camera_manager.connect_camera():
+            logger.error(f"[ERROR] Failed to connect Camera {camera_id}")
+            return
+
         logger.info(f"[START] Camera {camera_id} optimized worker started")
 
         frame_number = 0
         processed_frames = 0
         skipped_frames = 0
-        FRAME_SKIP = 20  # Process every 20th frame (SAME as original)
+        FRAME_SKIP = 40  # Process every 40th frame (INCREASED for 6 GPU workers)
 
         while self.running:
             try:
                 # Read frame from camera (SAME method as main.py and original)
                 ret, frame = camera_manager.read_frame()
                 if not ret:
-                    logger.warning(f"📹 Camera {camera_id}: Failed to read frame")
+                    logger.warning(f"[CAMERA] Camera {camera_id}: Failed to read frame")
                     continue
 
                 frame_number += 1
@@ -112,15 +117,15 @@ class OptimizedCameraThreadManager(CameraThreadManager):
                     logger.info(f"[STATS] Camera {camera_id} OPTIMIZATION STATS: Processed {processed_frames}, Skipped {skipped_frames}, CPU Savings: {cpu_savings:.1f}%")
 
             except Exception as e:
-                logger.error(f"❌ Camera {camera_id} optimized worker error: {e}")
+                logger.error(f"[ERROR] Camera {camera_id} optimized worker error: {e}")
                 time.sleep(0.1)  # Brief pause on error
 
-        logger.info(f"🛑 Camera {camera_id} optimized worker stopped")
-        
+        logger.info(f"[STOP] Camera {camera_id} optimized worker stopped")
+
         # Final statistics
         if frame_number > 0:
             cpu_savings = (skipped_frames / frame_number * 100)
-            logger.info(f"📊 Camera {camera_id} FINAL STATS: Total frames {frame_number}, Processed {processed_frames}, Skipped {skipped_frames}, CPU Savings: {cpu_savings:.1f}%")
+            logger.info(f"[FINAL] Camera {camera_id} FINAL STATS: Total frames {frame_number}, Processed {processed_frames}, Skipped {skipped_frames}, CPU Savings: {cpu_savings:.1f}%")
 
     def get_optimization_stats(self):
         """Get optimization performance statistics"""

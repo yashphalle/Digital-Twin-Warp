@@ -28,11 +28,11 @@ class OptimizedQueueManager(QueueManager):
         
         # OPTIMIZED queue sizes for better GPU utilization
         self.queues = {
-            # Camera → Detection (INCREASED for better GPU feeding)
-            'camera_to_detection': queue.Queue(maxsize=max_cameras * 3),  # Was 2, now 3
-            
+            # Camera → Detection (INCREASED for 6 GPU workers)
+            'camera_to_detection': queue.Queue(maxsize=max_cameras * 6),  # Increased for 6 workers
+
             # Detection → Processing (INCREASED for smoother flow)
-            'detection_to_processing': queue.Queue(maxsize=max_cameras * 3),  # Was 2, now 3
+            'detection_to_processing': queue.Queue(maxsize=max_cameras * 6),  # Increased for 6 workers
             
             # Processing → Database (SAME as original)
             'processing_to_database': queue.Queue(maxsize=max_cameras * 1),
@@ -56,9 +56,9 @@ class OptimizedQueueManager(QueueManager):
         
         self._stats_lock = threading.Lock()
         
-        logger.info("✅ Optimized Queue Manager initialized")
-        logger.info(f"🎯 OPTIMIZED Queue sizes: {[(name, q.maxsize) for name, q in self.queues.items()]}")
-        logger.info("📈 Enhanced monitoring for GPU utilization tracking")
+        logger.info("[OK] Optimized Queue Manager initialized")
+        logger.info(f"[CONFIG] OPTIMIZED Queue sizes: {[(name, q.maxsize) for name, q in self.queues.items()]}")
+        logger.info("[MONITOR] Enhanced monitoring for GPU utilization tracking")
     
     def put_frame(self, queue_name: str, frame_data: FrameData, timeout: float = 1.0) -> bool:
         """
@@ -174,7 +174,7 @@ class OptimizedQueueManager(QueueManager):
         stats = self.get_optimization_stats()
         opt_stats = stats.get('optimization', {})
         
-        logger.info(f"🎯 QUEUE OPTIMIZATION STATUS:")
+        logger.info(f"[OPTIMIZATION] QUEUE OPTIMIZATION STATUS:")
         logger.info(f"   GPU Feed Efficiency: {opt_stats.get('gpu_feed_efficiency', 'N/A')}")
         logger.info(f"   Avg Queue Utilization: {opt_stats.get('avg_queue_utilization', 'N/A')}")
         logger.info(f"   Bottleneck Detected: {opt_stats.get('bottleneck_detected', 'none')}")

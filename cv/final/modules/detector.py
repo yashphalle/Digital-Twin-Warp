@@ -24,9 +24,19 @@ class CPUSimplePalletDetector:
         
         # Initialize detection with GPU for Grounding DINO if available
         if torch.cuda.is_available():
-            self.device = torch.device("cuda")
-            logger.info(f"🚀 Using GPU for Grounding DINO: {torch.cuda.get_device_name()}")
-            logger.info(f"📊 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+            # Find NVIDIA GPU by checking device names
+            nvidia_device = 0  # Default fallback
+            for i in range(torch.cuda.device_count()):
+                device_name = torch.cuda.get_device_name(i)
+                if "NVIDIA" in device_name:
+                    nvidia_device = i
+                    break
+
+            self.device = torch.device(f"cuda:{nvidia_device}")
+            torch.cuda.set_device(nvidia_device)
+            logger.info(f"🚀 Using GPU for Grounding DINO: {torch.cuda.get_device_name(nvidia_device)}")
+            logger.info(f"📊 GPU Memory: {torch.cuda.get_device_properties(nvidia_device).total_memory / 1024**3:.1f}GB")
+            logger.info(f"🎯 Selected GPU Device: cuda:{nvidia_device}")
         else:
             self.device = torch.device("cpu")
             logger.info("⚠️ GPU not available, using CPU for Grounding DINO")
@@ -55,7 +65,7 @@ class CPUSimplePalletDetector:
 
             # Log GPU memory usage if using GPU
             if self.device.type == 'cuda':
-                memory_allocated = torch.cuda.memory_allocated() / 1024**3
+                memory_allocated = torch.cuda.memory_allocated(self.device) / 1024**3
                 logger.info(f"📊 GPU Memory allocated: {memory_allocated:.2f}GB")
                 
         except Exception as e:

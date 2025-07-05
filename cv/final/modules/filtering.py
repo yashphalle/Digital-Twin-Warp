@@ -22,10 +22,10 @@ class DetectionFiltering:
         self.MAX_PHYSICAL_SIZE_FT = max_physical_size_ft
         self.CELL_SIZE = cell_size
         
-        logger.info(f"🔧 Detection filtering initialized for Camera {camera_id}")
-        logger.info(f"📏 Area filter: {min_area} - {max_area} pixels")
-        logger.info(f"📐 Physical size limit: {max_physical_size_ft}ft")
-        logger.info(f"🔲 Grid cell size: {cell_size}px")
+        logger.info(f"Detection filtering initialized for Camera {camera_id}")
+        logger.info(f"Area filter: {min_area} - {max_area} pixels")
+        logger.info(f"Physical size limit: {max_physical_size_ft}ft")
+        logger.info(f"Grid cell size: {cell_size}px")
 
     def calculate_center(self, bbox: List[int]) -> Tuple[int, int]:
         """Calculate center point of bounding box"""

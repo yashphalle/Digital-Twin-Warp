@@ -15,13 +15,18 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from warehouse_threading.optimized_pipeline_system import OptimizedPipelineSystem
 
-# Configure logging
+# Configure logging with UTF-8 encoding for Windows compatibility
+import io
+
+# Create UTF-8 compatible stream handler
+utf8_stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('optimized_threading.log')
+        logging.StreamHandler(utf8_stdout),
+        logging.FileHandler('optimized_threading.log', encoding='utf-8')
     ]
 )
 

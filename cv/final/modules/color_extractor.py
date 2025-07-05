@@ -24,7 +24,7 @@ class ObjectColorExtractor:
 
     def __init__(self):
         self.min_pixels = 100  # Minimum pixels needed for reliable color extraction
-        logger.info("✅ Object color extractor initialized")
+        logger.info("Object color extractor initialized")
 
     def extract_dominant_color(self, image_region: np.ndarray) -> Dict:
         """Extract dominant color from object region and return HSV + RGB values"""
