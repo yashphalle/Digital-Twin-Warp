@@ -99,16 +99,8 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
     if (!timestamp) return 'N/A';
     try {
       const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffSec = Math.floor(diffMs / 1000);
-      const diffMin = Math.floor(diffSec / 60);
-      const diffHour = Math.floor(diffMin / 60);
-
-      if (diffSec < 60) return `${diffSec} sec ago`;
-      if (diffMin < 60) return `${diffMin} min ago`;
-      if (diffHour < 24) return `${diffHour} hour ago`;
-      return date.toLocaleDateString();
+      // Return exact timestamp in readable format
+      return date.toLocaleString();
     } catch {
       return 'Invalid date';
     }
@@ -138,27 +130,55 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
             </div>
           </div>
 
+          {/* Warp ID */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-1">🏷️ Warp ID</div>
+            <div className="flex items-center gap-2">
+              {object.warp_id ? (
+                <>
+                  <span className="text-green-400 font-mono font-semibold bg-green-900/20 px-2 py-1 rounded text-sm">
+                    {object.warp_id}
+                  </span>
+                  <div className="w-2 h-2 bg-green-400 rounded-full" title="QR Code Linked"></div>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" title="Awaiting Robot Assignment"></div>
+                  <span className="text-orange-400 font-medium">Not assigned yet</span>
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Camera Info */}
           <div className="bg-gray-700 rounded-lg p-3">
             <div className="text-sm text-gray-400 mb-1">Camera</div>
             <div className="text-white font-medium">Zone {object.camera_id || 'Unknown'}</div>
           </div>
 
-          {/* Timing */}
+          {/* Timing Information */}
           <div className="bg-gray-700 rounded-lg p-3">
             <div className="space-y-3">
               <div>
-                <div className="text-sm text-gray-400 mb-1">⏰ Inbound Time</div>
-                <div className="text-white">
+                <div className="text-sm text-gray-400 mb-1">Inbound Time</div>
+                <div className="text-white text-sm">
                   {formatTimestamp(object.first_seen || object.timestamp)}
                 </div>
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">Last Seen</div>
-                <div className="text-white">
+                <div className="text-white text-sm">
                   {formatTimestamp(object.last_seen || object.timestamp)}
                 </div>
               </div>
+              {object.warp_id_linked_at && (
+                <div>
+                  <div className="text-sm text-gray-400 mb-1">Warp Linked</div>
+                  <div className="text-purple-400 text-sm">
+                    {formatTimestamp(object.warp_id_linked_at)}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -192,12 +212,6 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
                   ({object.physical_x_ft?.toFixed(1) || 'N/A'}, {object.physical_y_ft?.toFixed(1) || 'N/A'}) ft
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-300">Status:</span>
-                <span className={`font-medium ${object.coordinate_status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'}`}>
-                  {object.coordinate_status || 'Unknown'}
-                </span>
-              </div>
             </div>
           </div>
 
@@ -205,12 +219,6 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
           <div className="bg-gray-700 rounded-lg p-3">
             <div className="text-sm text-gray-400 mb-2">🔄 Tracking</div>
             <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-300">Status:</span>
-                <span className={`font-medium ${object.tracking_status === 'existing' ? 'text-orange-400' : object.tracking_status === 'new' ? 'text-green-400' : 'text-gray-400'}`}>
-                  {object.tracking_status || 'Unknown'}
-                </span>
-              </div>
               <div className="flex justify-between">
                 <span className="text-gray-300">Times Seen:</span>
                 <span className="text-white">{object.times_seen || 1}</span>

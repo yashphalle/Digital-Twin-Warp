@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 interface TrackedObject {
   persistent_id: number;
   global_id?: number;
+  warp_id?: string | null;  // NEW: Warp ID from QR code
   camera_id?: number;
   real_center: [number, number];  // Required - physical coordinates in feet
   bbox?: number[];  // [x1, y1, x2, y2] bounding box coordinates
@@ -20,6 +21,9 @@ interface TrackedObject {
   color_name?: string;
   color_confidence?: number;
   extraction_method?: string;
+  warp_id_linked_at?: string;  // NEW: When Warp ID was linked
+  first_seen?: string;  // NEW: First detection timestamp
+  last_seen?: string;   // NEW: Last detection timestamp
 }
 
 interface WarehouseConfig {
@@ -45,6 +49,8 @@ const WorkingWarehouseView: React.FC = () => {
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
   const [useQuadrangles, setUseQuadrangles] = useState(true);
   const [selectedObject, setSelectedObject] = useState<TrackedObject | null>(null);
+  const [searchWarpId, setSearchWarpId] = useState('');
+  const [highlightedObject, setHighlightedObject] = useState<number | null>(null);
 
   // Camera zones - UPDATED to match calibration files
   const cameraZones = [
@@ -109,8 +115,12 @@ const WorkingWarehouseView: React.FC = () => {
     return `${Math.round(seconds / 3600)}h`;
   };
 
-  // Use the original simple color system from database
+  // Use the original simple color system from database with search highlighting
   const getObjectColor = (object: TrackedObject) => {
+    // Highlight searched object
+    if (highlightedObject === object.persistent_id) {
+      return '#3b82f6'; // Blue highlight for searched object
+    }
     return getStatusColor(object.status, object.age_seconds);
   };
 
@@ -289,26 +299,46 @@ const WorkingWarehouseView: React.FC = () => {
             >
               📦 {showBoundingBoxes ? 'Hide' : 'Show'} Boxes
             </button>
-            <button
-              onClick={() => setUseQuadrangles(!useQuadrangles)}
-              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                useQuadrangles
-                  ? 'bg-purple-600 border-purple-500 text-white'
-                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              🔷 {useQuadrangles ? 'Quadrangles' : 'Center Points'}
-            </button>
-            <button
-              onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
-              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                showBoundingBoxes
-                  ? 'bg-orange-600 border-orange-500 text-white'
-                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              📦 {showBoundingBoxes ? 'Hide' : 'Show'} Boxes
-            </button>
+
+            {/* Warp ID Search */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search Warp ID..."
+                value={searchWarpId}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchWarpId(value);
+
+                  if (value.trim()) {
+                    // Find and highlight object with matching Warp ID
+                    const matchingObject = objects.find(obj =>
+                      obj.warp_id && obj.warp_id.toLowerCase().includes(value.toLowerCase())
+                    );
+                    if (matchingObject) {
+                      setHighlightedObject(matchingObject.persistent_id);
+                      setSelectedObject(matchingObject);
+                    } else {
+                      setHighlightedObject(null);
+                    }
+                  } else {
+                    setHighlightedObject(null);
+                  }
+                }}
+                className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none w-40"
+              />
+              {searchWarpId && (
+                <button
+                  onClick={() => {
+                    setSearchWarpId('');
+                    setHighlightedObject(null);
+                  }}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex gap-6 text-sm text-gray-400">
@@ -477,9 +507,19 @@ const WorkingWarehouseView: React.FC = () => {
                   style={{ left: `${x}%`, top: `${y}%`, zIndex: 20 }}
                   onClick={() => setSelectedObject(object)}
                 >
-                  {/* ID label with modern styling */}
-                  <div className="bg-gray-800 text-white text-xs px-2 py-0.5 rounded-full font-semibold border border-gray-600 shadow-lg">
+                  {/* ID label with modern styling and Warp ID indicator */}
+                  <div className={`text-white text-xs px-2 py-0.5 rounded-full font-semibold border shadow-lg flex items-center gap-1 ${
+                    highlightedObject === object.persistent_id
+                      ? 'bg-blue-600 border-blue-400 animate-pulse'
+                      : 'bg-gray-800 border-gray-600'
+                  }`}>
                     {object.persistent_id}
+                    {/* Warp ID status indicator */}
+                    {object.warp_id ? (
+                      <div className="w-1.5 h-1.5 bg-green-400 rounded-full" title="QR Code Linked"></div>
+                    ) : (
+                      <div className="w-1.5 h-1.5 bg-orange-400 rounded-full" title="QR Code Not Linked"></div>
+                    )}
                   </div>
 
                   {/* Enhanced tooltip with quadrangle info */}
@@ -506,6 +546,14 @@ const WorkingWarehouseView: React.FC = () => {
                       <div className="flex justify-between gap-3">
                         <span className="text-gray-400">Position:</span>
                         <span className="text-blue-400">({object.real_center[0].toFixed(1)}ft, {object.real_center[1].toFixed(1)}ft)</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-400">Warp ID:</span>
+                        {object.warp_id ? (
+                          <span className="text-green-400 font-mono">{object.warp_id}</span>
+                        ) : (
+                          <span className="text-orange-400">Not Linked</span>
+                        )}
                       </div>
                       {object.area && (
                         <div className="flex justify-between gap-3">
@@ -588,8 +636,25 @@ const WorkingWarehouseView: React.FC = () => {
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-gray-300 border-b border-gray-600 pb-1">Basic Information</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-gray-400">ID:</div>
+                <div className="text-gray-400">Object ID:</div>
                 <div className="text-white font-semibold">{selectedObject.persistent_id}</div>
+
+                <div className="text-gray-400">Warp ID:</div>
+                <div className="flex items-center gap-2">
+                  {selectedObject.warp_id ? (
+                    <>
+                      <span className="text-green-400 font-mono font-semibold bg-green-900/20 px-2 py-1 rounded text-xs">
+                        {selectedObject.warp_id}
+                      </span>
+                      <div className="w-2 h-2 bg-green-400 rounded-full" title="QR Code Linked"></div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" title="Awaiting Robot Assignment"></div>
+                      <span className="text-orange-400 font-medium">Not assigned yet</span>
+                    </>
+                  )}
+                </div>
 
                 {selectedObject.global_id && (
                   <>
@@ -623,8 +688,40 @@ const WorkingWarehouseView: React.FC = () => {
                     <div className="text-orange-400">{selectedObject.area.toLocaleString()}px</div>
                   </>
                 )}
+
+                {/* Timeline Information */}
+                {(selectedObject.first_seen || selectedObject.last_seen || selectedObject.warp_id_linked_at) && (
+                  <>
+                    <div className="col-span-2 border-t border-gray-600 pt-2 mt-2">
+                      <div className="text-xs font-semibold text-gray-300 mb-2">Timeline</div>
+                    </div>
+
+                    {selectedObject.first_seen && (
+                      <>
+                        <div className="text-gray-400">Inbound Time:</div>
+                        <div className="text-blue-400 text-xs">{new Date(selectedObject.first_seen).toLocaleString()}</div>
+                      </>
+                    )}
+
+                    {selectedObject.last_seen && (
+                      <>
+                        <div className="text-gray-400">Last Seen:</div>
+                        <div className="text-green-400 text-xs">{new Date(selectedObject.last_seen).toLocaleString()}</div>
+                      </>
+                    )}
+
+                    {selectedObject.warp_id_linked_at && (
+                      <>
+                        <div className="text-gray-400">Warp Linked:</div>
+                        <div className="text-purple-400 text-xs">{new Date(selectedObject.warp_id_linked_at).toLocaleString()}</div>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             </div>
+
+
 
             {/* Coordinate Information */}
             <div className="space-y-2">

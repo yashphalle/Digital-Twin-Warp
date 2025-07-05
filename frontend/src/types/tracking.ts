@@ -1,5 +1,6 @@
 export interface TrackedObject {
   persistent_id: number;
+  warp_id?: string | null; // NEW: Warp ID from QR code
   center: {
     x: number;
     y: number;
@@ -14,6 +15,7 @@ export interface TrackedObject {
   last_seen: string;
   created_at?: string;
   updated_at?: string;
+  warp_id_linked_at?: string; // NEW: When Warp ID was linked
 }
 
 export interface WarehouseConfig {
@@ -47,4 +49,30 @@ export interface TrackingResponse {
 export interface ObjectPosition {
   x: number; // percentage (0-100)
   y: number; // percentage (0-100)
+}
+
+// NEW: Warp ID related interfaces
+export interface WarpIdLinkRequest {
+  warp_id: string;
+}
+
+export interface WarpIdResponse {
+  success: boolean;
+  message: string;
+  persistent_id?: number;
+  global_id?: number;
+  warp_id?: string;
+}
+
+export interface WarpIdSearchResponse {
+  success: boolean;
+  object?: TrackedObject;
+  timestamp: string;
+}
+
+export interface WarpIdListResponse {
+  success: boolean;
+  count: number;
+  objects: TrackedObject[];
+  timestamp: string;
 }

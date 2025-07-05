@@ -56,6 +56,8 @@ class WarehouseDatabaseHandler:
             self.mongodb_collection.create_index([("global_id", 1), ("camera_id", 1)])
             self.mongodb_collection.create_index([("camera_id", 1), ("last_seen", -1)])
             self.mongodb_collection.create_index([("first_seen", -1)])
+            # NEW: Index for warp_id lookups
+            self.mongodb_collection.create_index([("warp_id", 1)], sparse=True)  # sparse=True for nullable field
 
             logger.info("✅ MongoDB indexes created for optimal upsert performance")
 
@@ -98,6 +100,7 @@ class WarehouseDatabaseHandler:
                 detection_doc = {
                     "camera_id": camera_id,
                     "global_id": global_id,
+                    "warp_id": detection.get('warp_id'),  # NEW: Warp ID from QR code (None by default)
                     "first_seen": current_time,
                     "last_seen": current_time,
                     "times_seen": 1,
@@ -238,7 +241,59 @@ class WarehouseDatabaseHandler:
     def is_connected(self) -> bool:
         """Check if MongoDB is connected"""
         return self.mongodb_client is not None
-    
+
+    def update_warp_id(self, global_id: int, warp_id: str) -> bool:
+        """Update warp_id for an existing object by global_id"""
+        if not self.mongodb_client:
+            logger.error("❌ MongoDB not connected")
+            return False
+
+        try:
+            # Update all documents with this global_id (across all cameras)
+            result = self.mongodb_collection.update_many(
+                {"global_id": global_id},
+                {
+                    "$set": {
+                        "warp_id": warp_id,
+                        "warp_id_linked_at": datetime.utcnow()
+                    }
+                }
+            )
+
+            if result.modified_count > 0:
+                logger.info(f"✅ Updated warp_id '{warp_id}' for global_id {global_id} ({result.modified_count} documents)")
+                return True
+            else:
+                logger.warning(f"⚠️ No documents found with global_id {global_id}")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error updating warp_id for global_id {global_id}: {e}")
+            return False
+
+    def find_object_by_warp_id(self, warp_id: str) -> Dict:
+        """Find object by warp_id"""
+        if not self.mongodb_client:
+            logger.error("❌ MongoDB not connected")
+            return None
+
+        try:
+            result = self.mongodb_collection.find_one(
+                {"warp_id": warp_id},
+                sort=[("last_seen", -1)]  # Get most recent if multiple
+            )
+
+            if result:
+                logger.debug(f"🔍 Found object with warp_id '{warp_id}': global_id {result.get('global_id')}")
+            else:
+                logger.debug(f"🔍 No object found with warp_id '{warp_id}'")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Error finding object by warp_id '{warp_id}': {e}")
+            return None
+
     def cleanup(self):
         """Cleanup database connection and save remaining detections (same as GPU script)"""
         if self.enable_mongodb and self.mongodb_client:

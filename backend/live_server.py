@@ -5,6 +5,7 @@ Live server connecting to real MongoDB CV system
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import uvicorn
 from pymongo import MongoClient
 from datetime import datetime, timedelta
@@ -12,10 +13,26 @@ import logging
 import cv2
 import time
 import numpy as np
+from typing import Optional
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Pydantic models for API requests
+class WarpIdLinkRequest(BaseModel):
+    warp_id: str
+
+class PalletWarpLinkRequest(BaseModel):
+    pallet_id: int  # This will be the global_id
+    warp_id: str
+
+class WarpIdResponse(BaseModel):
+    success: bool
+    message: str
+    persistent_id: Optional[int] = None
+    global_id: Optional[int] = None
+    warp_id: Optional[str] = None
 
 app = FastAPI(title="Live Warehouse Tracking API")
 
@@ -265,6 +282,7 @@ async def get_tracked_objects():
                 obj = {
                     "persistent_id": detection.get("global_id", f"det_{detection.get('_id', 'unknown')}"),
                     "global_id": detection.get("global_id"),
+                    "warp_id": detection.get("warp_id"),  # NEW: Include Warp ID from QR code
                     "camera_id": detection.get("camera_id"),
                     "bbox": detection.get("bbox", [0, 0, 100, 100]),
                     "corners": detection.get("corners", []),  # 4-point pixel coordinates
@@ -279,8 +297,8 @@ async def get_tracked_objects():
                     "times_seen": detection.get("times_seen", 1),
                     "is_new": detection.get("is_new", False),
                     "timestamp": detection.get("timestamp"),
-                    "first_seen": detection.get("timestamp"),  # Use timestamp as first_seen
-                    "last_seen": detection.get("timestamp"),   # Use timestamp as last_seen
+                    "first_seen": detection.get("first_seen"),  # Use actual first_seen from DB
+                    "last_seen": detection.get("last_seen"),    # Use actual last_seen from DB
                     "age_seconds": 0,  # Recent detection
                     # Color information from CV system
                     "color_rgb": detection.get("color_rgb"),
@@ -288,7 +306,9 @@ async def get_tracked_objects():
                     "color_hex": detection.get("color_hex"),
                     "color_name": detection.get("color_name"),
                     "color_confidence": detection.get("color_confidence"),
-                    "extraction_method": detection.get("extraction_method")
+                    "extraction_method": detection.get("extraction_method"),
+                    # Warp ID metadata
+                    "warp_id_linked_at": detection.get("warp_id_linked_at")
                 }
 
                 # Skip objects without valid coordinates
@@ -424,6 +444,292 @@ async def get_tracking_stats():
     except Exception as e:
         logger.error(f"❌ Error fetching stats: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching stats: {str(e)}")
+
+@app.put("/api/tracking/objects/{persistent_id}/warp-id")
+async def link_warp_id(persistent_id: int, request: WarpIdLinkRequest) -> WarpIdResponse:
+    """Link a Warp ID from QR code to existing pallet by persistent_id"""
+    if tracking_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+
+    try:
+        warp_id = request.warp_id.strip()
+
+        # Validate warp_id format (basic validation)
+        if not warp_id or len(warp_id) < 3:
+            return WarpIdResponse(
+                success=False,
+                message="Invalid Warp ID format. Must be at least 3 characters."
+            )
+
+        # Check if warp_id is already used by another object
+        existing_object = tracking_collection.find_one({"warp_id": warp_id})
+        if existing_object and existing_object.get("persistent_id") != persistent_id:
+            return WarpIdResponse(
+                success=False,
+                message=f"Warp ID '{warp_id}' is already linked to another object (ID: {existing_object.get('persistent_id')})"
+            )
+
+        # Find the object by persistent_id
+        target_object = tracking_collection.find_one({"persistent_id": persistent_id})
+        if not target_object:
+            return WarpIdResponse(
+                success=False,
+                message=f"No object found with persistent_id {persistent_id}"
+            )
+
+        # Update the object with warp_id
+        result = tracking_collection.update_many(
+            {"persistent_id": persistent_id},
+            {
+                "$set": {
+                    "warp_id": warp_id,
+                    "warp_id_linked_at": datetime.now()
+                }
+            }
+        )
+
+        if result.modified_count > 0:
+            logger.info(f"✅ Linked Warp ID '{warp_id}' to persistent_id {persistent_id}")
+            return WarpIdResponse(
+                success=True,
+                message=f"Successfully linked Warp ID '{warp_id}' to object {persistent_id}",
+                persistent_id=persistent_id,
+                global_id=target_object.get("global_id"),
+                warp_id=warp_id
+            )
+        else:
+            return WarpIdResponse(
+                success=False,
+                message=f"Failed to update object {persistent_id}"
+            )
+
+    except Exception as e:
+        logger.error(f"❌ Error linking Warp ID: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error linking Warp ID: {str(e)}")
+
+@app.get("/api/tracking/objects/by-warp-id/{warp_id}")
+async def get_object_by_warp_id(warp_id: str):
+    """Find object by Warp ID"""
+    if tracking_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+
+    try:
+        # Find object with the specified warp_id
+        object_data = tracking_collection.find_one(
+            {"warp_id": warp_id},
+            {"_id": 0},  # Exclude MongoDB _id field
+            sort=[("last_seen", -1)]  # Get most recent if multiple
+        )
+
+        if not object_data:
+            raise HTTPException(status_code=404, detail=f"No object found with Warp ID '{warp_id}'")
+
+        logger.info(f"🔍 Found object with Warp ID '{warp_id}': persistent_id {object_data.get('persistent_id')}")
+
+        return {
+            "success": True,
+            "object": object_data,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error finding object by Warp ID '{warp_id}': {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error finding object: {str(e)}")
+
+@app.get("/api/tracking/warp-ids")
+async def get_all_warp_ids():
+    """Get all objects with Warp IDs for inventory management"""
+    if tracking_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+
+    try:
+        # Find all objects that have warp_id set
+        objects_with_warp_ids = list(tracking_collection.find(
+            {"warp_id": {"$exists": True, "$ne": None}},
+            {
+                "_id": 0,
+                "persistent_id": 1,
+                "global_id": 1,
+                "warp_id": 1,
+                "real_center": 1,
+                "physical_x_ft": 1,
+                "physical_y_ft": 1,
+                "camera_id": 1,
+                "first_seen": 1,
+                "last_seen": 1,
+                "warp_id_linked_at": 1
+            }
+        ).sort([("warp_id_linked_at", -1)]))
+
+        logger.info(f"📊 Found {len(objects_with_warp_ids)} objects with Warp IDs")
+
+        return {
+            "success": True,
+            "count": len(objects_with_warp_ids),
+            "objects": objects_with_warp_ids,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error fetching objects with Warp IDs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching Warp IDs: {str(e)}")
+
+@app.post("/api/robot/simulate-assignment")
+async def simulate_robot_assignment():
+    """🤖 TEST API: Simulate robot assignment of Warp ID to a random pallet"""
+    if tracking_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+
+    try:
+        # Find objects without Warp IDs
+        unlinked_objects = list(tracking_collection.find(
+            {
+                "physical_x_ft": {"$exists": True, "$ne": None},
+                "physical_y_ft": {"$exists": True, "$ne": None},
+                "$or": [
+                    {"warp_id": {"$exists": False}},
+                    {"warp_id": None}
+                ]
+            },
+            {
+                "_id": 0,
+                "persistent_id": 1,
+                "global_id": 1,
+                "physical_x_ft": 1,
+                "physical_y_ft": 1,
+                "camera_id": 1
+            }
+        ).limit(10))
+
+        if not unlinked_objects:
+            return {
+                "success": False,
+                "message": "No unlinked objects found to assign Warp ID",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        # Select first unlinked object for simulation
+        target_object = unlinked_objects[0]
+        persistent_id = target_object["persistent_id"]
+
+        # Generate simulated Warp ID
+        import time
+        simulated_warp_id = f"WARP-ROBOT-{int(time.time())}"
+
+        # Simulate robot workflow
+        robot_steps = [
+            f"🔍 Robot scans warehouse area at ({target_object['physical_x_ft']:.1f}ft, {target_object['physical_y_ft']:.1f}ft)",
+            f"📦 Robot identifies pallet with Object ID: {persistent_id}",
+            f"📱 Robot scans QR code and reads: {simulated_warp_id}",
+            f"🔗 Robot calls API to link Warp ID..."
+        ]
+
+        # Actually link the Warp ID
+        result = tracking_collection.update_many(
+            {"persistent_id": persistent_id},
+            {
+                "$set": {
+                    "warp_id": simulated_warp_id,
+                    "warp_id_linked_at": datetime.now()
+                }
+            }
+        )
+
+        if result.modified_count > 0:
+            robot_steps.append(f"✅ Successfully linked {simulated_warp_id} to Object {persistent_id}")
+
+            logger.info(f"🤖 Robot simulation: Linked {simulated_warp_id} to object {persistent_id}")
+
+            return {
+                "success": True,
+                "message": "Robot assignment simulation completed successfully",
+                "robot_steps": robot_steps,
+                "assignment": {
+                    "persistent_id": persistent_id,
+                    "global_id": target_object.get("global_id"),
+                    "warp_id": simulated_warp_id,
+                    "position": [target_object["physical_x_ft"], target_object["physical_y_ft"]],
+                    "camera_id": target_object.get("camera_id")
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            robot_steps.append(f"❌ Failed to link Warp ID")
+            return {
+                "success": False,
+                "message": "Failed to update object with Warp ID",
+                "robot_steps": robot_steps,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    except Exception as e:
+        logger.error(f"❌ Error in robot simulation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Robot simulation error: {str(e)}")
+
+@app.post("/api/link-warp-id")
+async def link_pallet_warp_id(request: PalletWarpLinkRequest) -> WarpIdResponse:
+    """🔗 Simple POST API: Link Warp ID to Pallet ID"""
+    if tracking_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+
+    try:
+        pallet_id = request.pallet_id
+        warp_id = request.warp_id.strip()
+
+        # Basic validation
+        if not warp_id or len(warp_id) < 3:
+            return WarpIdResponse(
+                success=False,
+                message="Invalid Warp ID format. Must be at least 3 characters."
+            )
+
+        # Check if warp_id is already used
+        existing_object = tracking_collection.find_one({"warp_id": warp_id})
+        if existing_object and existing_object.get("global_id") != pallet_id:
+            return WarpIdResponse(
+                success=False,
+                message=f"Warp ID '{warp_id}' is already linked to another pallet (Global ID: {existing_object.get('global_id')})"
+            )
+
+        # Check if pallet exists (using global_id)
+        target_object = tracking_collection.find_one({"global_id": pallet_id})
+        if not target_object:
+            return WarpIdResponse(
+                success=False,
+                message=f"Pallet with Global ID {pallet_id} not found in system"
+            )
+
+        # Link the Warp ID (update all documents with this global_id)
+        result = tracking_collection.update_many(
+            {"global_id": pallet_id},
+            {
+                "$set": {
+                    "warp_id": warp_id,
+                    "warp_id_linked_at": datetime.now()
+                }
+            }
+        )
+
+        if result.modified_count > 0:
+            logger.info(f"✅ Linked Warp ID '{warp_id}' to Global ID {pallet_id}")
+            return WarpIdResponse(
+                success=True,
+                message=f"Successfully linked Warp ID '{warp_id}' to Global ID {pallet_id}",
+                persistent_id=target_object.get("persistent_id"),
+                global_id=pallet_id,
+                warp_id=warp_id
+            )
+        else:
+            return WarpIdResponse(
+                success=False,
+                message=f"Failed to update Global ID {pallet_id}"
+            )
+
+    except Exception as e:
+        logger.error(f"❌ Error linking Warp ID: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error linking Warp ID: {str(e)}")
 
 @app.get("/api/cameras/status")
 async def get_cameras_status():

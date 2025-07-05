@@ -324,7 +324,7 @@ class CPUCompleteWarehouseTracker:
 # =======================================================
 
 # 🎯 DETECTION CAMERAS: Add camera numbers you want to run detection on
-ACTIVE_CAMERAS = [1, 2]  # Cameras that will detect objects
+ACTIVE_CAMERAS = [1]  # Cameras that will detect objects
 
 # 🖥️ GUI CAMERAS: Add camera numbers you want to see windows for
 GUI_CAMERAS = [1]  # Cameras that will show GUI windows (subset of ACTIVE_CAMERAS)
