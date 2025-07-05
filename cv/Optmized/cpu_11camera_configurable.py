@@ -240,9 +240,9 @@ class ObjectColorExtractor:
             hsv = cv2.cvtColor(rgb_normalized, cv2.COLOR_RGB2HSV)[0, 0]
 
             return {
-                'rgb': [int(dominant_rgb[0]), int(dominant_rgb[1]), int(dominant_rgb[2])],
-                'hsv': [int(hsv[0]), int(hsv[1]), int(hsv[2])],
-                'hex': f"#{dominant_rgb[0]:02x}{dominant_rgb[1]:02x}{dominant_rgb[2]:02x}",
+                'color_rgb': [int(dominant_rgb[0]), int(dominant_rgb[1]), int(dominant_rgb[2])],
+                'color_hsv': [int(hsv[0]), int(hsv[1]), int(hsv[2])],
+                'color_hex': f"#{dominant_rgb[0]:02x}{dominant_rgb[1]:02x}{dominant_rgb[2]:02x}",
                 'color_confidence': float(color_confidence),
                 'color_name': self._get_color_name(hsv),
                 'extraction_method': 'kmeans_clustering'
@@ -255,9 +255,9 @@ class ObjectColorExtractor:
     def _get_default_color(self) -> Dict:
         """Return default gray color when extraction fails"""
         return {
-            'rgb': [128, 128, 128],
-            'hsv': [0, 0, 128],
-            'hex': "#808080",
+            'color_rgb': [128, 128, 128],
+            'color_hsv': [0, 0, 128],
+            'color_hex': "#808080",
             'color_confidence': 0.0,
             'color_name': 'gray',
             'extraction_method': 'default_fallback'
@@ -1257,48 +1257,21 @@ class MultiCameraCPUSystem:
 # CONFIGURATION
 # ============================================================================
 
-# 📹 CAMERA CONFIGURATION
-ALL_CAMERAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # All available cameras
+# 📹 SIMPLE CAMERA CONFIGURATION - EDIT THESE LISTS:
+# =======================================================
 
-# Support for camera group splitting
-CAMERA_GROUP = os.getenv('CAMERA_GROUP', 'ALL')  # ALL, GROUP1, GROUP2
+# 🎯 DETECTION CAMERAS: Add camera numbers you want to run detection on
+ACTIVE_CAMERAS = [1]  # Cameras that will detect objects
 
-if CAMERA_GROUP == 'GROUP1':
-    ACTIVE_CAMERAS = [1, 2, 3, 4, 5, 6]  # First 6 cameras
-    GUI_CAMERAS = [1, 2, 3, 4, 5, 6]
-    print("🔥 RUNNING CAMERA GROUP 1: Cameras 1-6")
-elif CAMERA_GROUP == 'GROUP2':
-    ACTIVE_CAMERAS = [7, 8, 9, 10, 11]   # Last 5 cameras
-    GUI_CAMERAS = [7, 8, 9, 10, 11]
-    print("🔥 RUNNING CAMERA GROUP 2: Cameras 7-11")
-elif CAMERA_GROUP == 'SINGLE8':
-    ACTIVE_CAMERAS = [8]  # Single Camera 8 for testing
-    GUI_CAMERAS = [8]
-    print("🔥 RUNNING SINGLE CAMERA 8 FOR TESTING")
-elif CAMERA_GROUP.startswith('SINGLE'):
-    # Extract camera number from SINGLE1, SINGLE2, etc.
-    try:
-        cam_num = int(CAMERA_GROUP.replace('SINGLE', ''))
-        if 1 <= cam_num <= 11:
-            ACTIVE_CAMERAS = [cam_num]
-            GUI_CAMERAS = [cam_num]
-            print(f"🔥 RUNNING SINGLE CAMERA {cam_num} FOR TESTING")
-        else:
-            print(f"❌ Invalid camera number: {cam_num}. Using Camera 8.")
-            ACTIVE_CAMERAS = [8]
-            GUI_CAMERAS = [8]
-    except ValueError:
-        print("❌ Invalid CAMERA_GROUP format. Using Camera 8.")
-        ACTIVE_CAMERAS = [8]
-        GUI_CAMERAS = [8]
-else:
-    ACTIVE_CAMERAS = [8]  # All cameras (default)
-    GUI_CAMERAS = [8]
-    print("🔥 RUNNING ALL CAMERAS: 1-11")
+# 🖥️ GUI CAMERAS: Add camera numbers you want to see windows for
+GUI_CAMERAS = [1]  # Cameras that will show GUI windows (subset of ACTIVE_CAMERAS)
 
-# 🖥️ GUI CONFIGURATION
-ENABLE_GUI = True  # Show camera windows
+# 🎛️ GUI CONFIGURATION
+ENABLE_GUI = True  # Set to False for headless mode
 ENABLE_CONSOLE_LOGGING = True  # Print logs to console
+
+print(f"🔥 CPU RUNNING CAMERAS: {ACTIVE_CAMERAS}")
+print(f"🖥️ GUI WINDOWS FOR: {GUI_CAMERAS if ENABLE_GUI else 'NONE (HEADLESS)'}")
 
 def main():
     """Main function for CPU-based 11-camera warehouse tracking"""

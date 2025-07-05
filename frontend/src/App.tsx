@@ -4,6 +4,7 @@ import CameraFeed from './components/CameraFeed';
 import CameraModal from './components/CameraModal';
 import WarehouseView from './components/WarehouseView';
 import TestWarehouse from './components/TestWarehouse';
+import WorkingWarehouseView from './components/WorkingWarehouseView';
 import { useTrackingStats } from './hooks/useTracking';
 
 // Types
@@ -451,7 +452,7 @@ export default function App() {
           <div className="flex-1 p-4 pt-0">
             {viewMode === 'tracking' ? (
               /* New Warehouse Tracking View */
-              <TestWarehouse />
+              <WorkingWarehouseView />
             ) : (
               /* Original Grid View */
               <div className="bg-gray-800 rounded-lg p-6 h-full flex flex-col">

@@ -118,7 +118,7 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
     <div className={`fixed right-0 top-0 h-full w-80 bg-gray-800 border-l border-gray-700 transform transition-transform duration-300 ease-in-out z-50 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold text-white">Object Details</h2>
+        <h2 className="text-lg font-semibold text-white">Pallet Details</h2>
         <button
           onClick={onClose}
           className="text-gray-400 hover:text-white transition-colors"
@@ -140,15 +140,25 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
 
           {/* Camera Info */}
           <div className="bg-gray-700 rounded-lg p-3">
-            <div className="text-sm text-gray-400 mb-1">📹 Camera</div>
-            <div className="text-white font-medium">Camera {object.camera_id || 'Unknown'}</div>
+            <div className="text-sm text-gray-400 mb-1">Camera</div>
+            <div className="text-white font-medium">Zone {object.camera_id || 'Unknown'}</div>
           </div>
 
           {/* Timing */}
           <div className="bg-gray-700 rounded-lg p-3">
-            <div className="text-sm text-gray-400 mb-1">⏰ Last Seen</div>
-            <div className="text-white">
-              {formatTimestamp(object.last_seen || object.timestamp)}
+            <div className="space-y-3">
+              <div>
+                <div className="text-sm text-gray-400 mb-1">⏰ Inbound Time</div>
+                <div className="text-white">
+                  {formatTimestamp(object.first_seen || object.timestamp)}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-400 mb-1">Last Seen</div>
+                <div className="text-white">
+                  {formatTimestamp(object.last_seen || object.timestamp)}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -169,72 +179,13 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
             </div>
           </div>
 
-          {/* Color Information */}
-          {(object.color_rgb || object.color_hex || object.color_name) && (
-            <div className="bg-gray-700 rounded-lg p-3">
-              <div className="text-sm text-gray-400 mb-2">🎨 Object Color</div>
-              <div className="space-y-2">
-                {/* Color Swatch */}
-                <div className="flex items-center space-x-3">
-                  <div
-                    className="w-8 h-8 rounded border-2 border-gray-500"
-                    style={{
-                      backgroundColor: object.color_rgb
-                        ? `rgb(${object.color_rgb[0]}, ${object.color_rgb[1]}, ${object.color_rgb[2]})`
-                        : object.color_hex || '#808080'
-                    }}
-                  ></div>
-                  <div>
-                    <div className="text-white font-medium">
-                      {object.color_name || 'Unknown'}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {object.color_hex || 'No hex value'}
-                    </div>
-                  </div>
-                </div>
 
-                {/* Color Values */}
-                {object.color_rgb && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">RGB:</span>
-                    <span className="text-white font-mono text-sm">
-                      ({object.color_rgb[0]}, {object.color_rgb[1]}, {object.color_rgb[2]})
-                    </span>
-                  </div>
-                )}
-
-                {object.color_hsv && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">HSV:</span>
-                    <span className="text-white font-mono text-sm">
-                      ({object.color_hsv[0]}, {object.color_hsv[1]}, {object.color_hsv[2]})
-                    </span>
-                  </div>
-                )}
-
-                {object.color_confidence !== undefined && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">Color Quality:</span>
-                    <span className={`font-medium ${object.color_confidence > 0.7 ? 'text-green-400' : object.color_confidence > 0.4 ? 'text-yellow-400' : 'text-red-400'}`}>
-                      {(object.color_confidence * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Coordinates */}
           <div className="bg-gray-700 rounded-lg p-3">
             <div className="text-sm text-gray-400 mb-2">📍 Coordinates</div>
             <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-300">Pixel:</span>
-                <span className="text-white">
-                  ({object.center?.[0] || 'N/A'}, {object.center?.[1] || 'N/A'})
-                </span>
-              </div>
+
               <div className="flex justify-between">
                 <span className="text-gray-300">Physical:</span>
                 <span className="text-cyan-400 font-medium">
@@ -292,26 +243,99 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }) => {
   );
 };
 
+// Helper function to get object color from database
+const getObjectColor = (obj) => {
+  // Priority 1: Use RGB values if available
+  if (obj.color_rgb && Array.isArray(obj.color_rgb) && obj.color_rgb.length >= 3) {
+    return `rgb(${obj.color_rgb[0]}, ${obj.color_rgb[1]}, ${obj.color_rgb[2]})`;
+  }
+
+  // Priority 2: Use hex color if available
+  if (obj.color_hex) {
+    return obj.color_hex;
+  }
+
+  // Priority 3: Map color names to hex values
+  if (obj.color_name && obj.color_confidence && obj.color_confidence > 0.3) {
+    const colorMap = {
+      'red': '#ff4444',
+      'orange': '#ff8800',
+      'yellow': '#ffdd00',
+      'green': '#44ff44',
+      'blue': '#4444ff',
+      'purple': '#8844ff',
+      'pink': '#ff44aa',
+      'brown': '#8b4513',
+      'black': '#333333',
+      'white': '#f0f0f0',
+      'gray': '#888888',
+      'grey': '#888888',
+      'dark': '#444444'
+    };
+
+    const detectedColor = colorMap[obj.color_name.toLowerCase()];
+    if (detectedColor) {
+      return detectedColor;
+    }
+  }
+
+  // Fallback: amber color
+  return '#d97706';
+};
+
 // Main App Component
 const LiveWarehouse = () => {
   const [objects, setObjects] = useState([]);
   const [stats, setStats] = useState(null);
   const [cameras, setCameras] = useState([]);
-  const [warehouseConfig, setWarehouseConfig] = useState({ 
-    width_feet: 180.0, 
-    length_feet: 90.0, 
-    width_meters: 54.864, 
-    length_meters: 27.432 
+  const [warehouseConfig, setWarehouseConfig] = useState({
+    width_feet: 180.0,
+    length_feet: 90.0,
+    width_meters: 54.864,
+    length_meters: 27.432
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedObject, setSelectedObject] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isPolling, setIsPolling] = useState(false); // Prevent overlapping requests
+  const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedObject, setHighlightedObject] = useState(null);
 
   // Handle object selection
   const handleObjectClick = (obj) => {
     setSelectedObject(obj);
     setSidebarOpen(true);
+  };
+
+  // Handle search functionality
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+
+    if (!query.trim()) {
+      setHighlightedObject(null);
+      return;
+    }
+
+    // Search for objects by persistent_id or global_id
+    const foundObject = objects.find(obj =>
+      obj.persistent_id?.toString().includes(query.trim()) ||
+      obj.global_id?.toString().includes(query.trim())
+    );
+
+    if (foundObject) {
+      setHighlightedObject(foundObject);
+      // Auto-select the found object to show details
+      setSelectedObject(foundObject);
+      setSidebarOpen(true);
+    } else {
+      setHighlightedObject(null);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setHighlightedObject(null);
   };
 
   // Handle clicking outside to deselect
@@ -334,6 +358,13 @@ const LiveWarehouse = () => {
   }, [sidebarOpen]);
 
   const fetchObjects = async () => {
+    // Prevent overlapping requests
+    if (isPolling) {
+      console.log('⏭️ Skipping fetch - previous request still in progress');
+      return;
+    }
+
+    setIsPolling(true);
     try {
       const response = await fetch('http://localhost:8000/api/tracking/objects');
       if (response.ok) {
@@ -349,6 +380,7 @@ const LiveWarehouse = () => {
       setObjects([]);
     } finally {
       setLoading(false);
+      setIsPolling(false);
     }
   };
 
@@ -398,17 +430,22 @@ const LiveWarehouse = () => {
     fetchStats();
     fetchCameras();
     fetchWarehouseConfig();
+
+    // Reduced polling frequency to prevent overlapping requests
     const interval = setInterval(() => {
       fetchObjects();
       fetchStats();
-      fetchCameras();
-      // Fetch warehouse config less frequently (every 30 seconds)
-    }, 500);
+    }, 2000); // Changed from 500ms to 2000ms (2 seconds)
 
-    const configInterval = setInterval(fetchWarehouseConfig, 30000);
+    // Fetch cameras less frequently since they don't change often
+    const cameraInterval = setInterval(fetchCameras, 10000); // Every 10 seconds
+
+    // Fetch warehouse config even less frequently
+    const configInterval = setInterval(fetchWarehouseConfig, 30000); // Every 30 seconds
 
     return () => {
       clearInterval(interval);
+      clearInterval(cameraInterval);
       clearInterval(configInterval);
     };
   }, []);
@@ -418,8 +455,21 @@ const LiveWarehouse = () => {
       {/* Header */}
       <header className="bg-gray-800 border-b border-gray-700 p-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Digital Twin - Live Warehouse Tracking</h1>
+          {/* Logo Section */}
+          <div className="flex items-center">
+            <img
+              src="/logo3.png"
+              alt="Logo"
+              className="h-12 w-auto mr-4"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </div>
+
+          {/* Centered Title Section */}
+          <div className="flex-1 flex flex-col items-center">
+            <h1 className="text-2xl font-bold text-center">Digital Twin - Live Warehouse Tracking</h1>
             <div className="flex gap-4 text-sm text-gray-400 mt-1">
               <span className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -428,11 +478,13 @@ const LiveWarehouse = () => {
               <span>Objects: {objects.length}{selectedObject ? ` | Selected: ${selectedObject.persistent_id || selectedObject.global_id}` : ''}</span>
               <span className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
-                Warehouse: 180ft × 90ft (45ft × 30ft Camera 8 active)
+                Warehouse: 180ft × 90ft
               </span>
               {error && <span className="text-red-400">Error: {error}</span>}
             </div>
           </div>
+
+          {/* Right Side Buttons */}
           <div className="flex items-center space-x-4">
             <button className="p-2 hover:bg-gray-700 rounded-lg">
               <Search />
@@ -453,21 +505,13 @@ const LiveWarehouse = () => {
           {/* Live Warehouse Map */}
           <div className="flex-1 p-4">
             <div className="bg-gray-800 rounded-lg p-6 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold">Live Object Tracking</h2>
+              <div className="flex items-center justify-end mb-3">
                 <div className="flex items-center space-x-3 text-xs">
                   <div className="flex items-center space-x-1">
                     <div className="w-3 h-3 bg-green-400 rounded animate-pulse"></div>
-                    <span className="text-gray-400">Real-time Detection</span>
+                    <span className="text-gray-400">Active Camera Zone</span>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-4 h-3 bg-blue-400 bg-opacity-20 border border-blue-400 rounded-sm"></div>
-                    <span className="text-gray-400">Object Bounding Boxes</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-6 h-6 bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 border border-white rounded-sm"></div>
-                    <span className="text-gray-400">Real Object Colors</span>
-                  </div>
+
                 </div>
               </div>
 
@@ -531,18 +575,18 @@ const LiveWarehouse = () => {
 
                     {/* Camera zones - Phase 1: Column 3 active */}
                     {[
-                      { id: 8, x_start: 120, x_end: 180, y_start: 0, y_end: 25, active: true },
-                      { id: 9, x_start: 120, x_end: 180, y_start: 25, y_end: 50, active: true },
-                      { id: 10, x_start: 120, x_end: 180, y_start: 50, y_end: 75, active: true },
-                      { id: 11, x_start: 120, x_end: 180, y_start: 75, y_end: 90, active: true },
+                      { id: 8, x_start: 120, x_end: 180, y_start: 0, y_end: 22.5, active: true },
+                      { id: 9, x_start: 120, x_end: 180, y_start: 22.5, y_end: 45, active: true },
+                      { id: 10, x_start: 120, x_end: 180, y_start: 45, y_end: 67.5, active: true },
+                      { id: 11, x_start: 120, x_end: 180, y_start: 67.5, y_end: 90, active: true },
                       // Standby cameras
-                      { id: 5, x_start: 60, x_end: 120, y_start: 0, y_end: 22.5, active: false },
-                      { id: 6, x_start: 60, x_end: 120, y_start: 22.5, y_end: 45, active: false },
-                      { id: 7, x_start: 60, x_end: 120, y_start: 45, y_end: 67.5, active: false },
-                      { id: 1, x_start: 0, x_end: 60, y_start: 0, y_end: 22.5, active: false },
-                      { id: 2, x_start: 0, x_end: 60, y_start: 22.5, y_end: 45, active: false },
-                      { id: 3, x_start: 0, x_end: 60, y_start: 45, y_end: 67.5, active: false },
-                      { id: 4, x_start: 0, x_end: 60, y_start: 67.5, y_end: 90, active: false },
+                      { id: 5, x_start: 60, x_end: 120, y_start: 0, y_end: 22.5, active: true },
+                      { id: 6, x_start: 60, x_end: 120, y_start: 22.5, y_end: 45, active: true },
+                      { id: 7, x_start: 60, x_end: 120, y_start: 45, y_end: 67.5, active: true },
+                      { id: 1, x_start: 0, x_end: 60, y_start: 0, y_end: 22.5, active: true },
+                      { id: 2, x_start: 0, x_end: 60, y_start: 22.5, y_end: 45, active: true },
+                      { id: 3, x_start: 0, x_end: 60, y_start: 45, y_end: 67.5, active: true },
+                      { id: 4, x_start: 0, x_end: 60, y_start: 67.5, y_end: 90, active: true },
                     ].map((zone) => (
                       <div
                         key={zone.id}
@@ -574,8 +618,80 @@ const LiveWarehouse = () => {
                       </div>
                     ))}
 
-                    {/* Objects as Simple Points */}
+                    {/* SVG Layer for Quadrangle Shapes */}
+                    <svg
+                      className="absolute inset-0 w-full h-full pointer-events-none"
+                      style={{ zIndex: 5 }}
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                    >
+                      {/* Define glow filter for search highlighting */}
+                      <defs>
+                        <filter id="searchGlow" x="-50%" y="-50%" width="200%" height="200%">
+                          <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#3b82f6" floodOpacity="0.8"/>
+                          <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#3b82f6" floodOpacity="0.4"/>
+                        </filter>
+                      </defs>
+                      {objects.map((obj) => {
+                        // Check if object has 4-corner data for quadrangle rendering
+                        if (obj.physical_corners && obj.physical_corners.length === 4) {
+                          // Convert all 4 physical corners to screen coordinates
+                          const screenCorners = obj.physical_corners.map(corner => {
+                            const x = ((180 - corner[0]) / 180) * 100; // Flipped mapping
+                            const y = (corner[1] / 90) * 100;
+                            return [x, y];
+                          });
+
+                          // Create SVG polygon points string
+                          const points = screenCorners.map(corner => `${corner[0]},${corner[1]}`).join(' ');
+
+                          // Get object color from database
+                          const objectColor = getObjectColor(obj);
+
+                          const isSelected = selectedObject?.persistent_id === obj.persistent_id;
+                          const isSearchHighlighted = highlightedObject?.persistent_id === obj.persistent_id;
+
+                          return (
+                            <React.Fragment key={`quad-${obj.persistent_id}`}>
+                              <polygon
+                                points={points}
+                                fill={objectColor}
+                                stroke={isSelected ? "#3b82f6" : "rgba(255,255,255,0.3)"}
+                                strokeWidth={isSelected ? "0.3" : "0.2"}
+                                opacity={isSelected || isSearchHighlighted ? 1 : 0.85}
+                                filter={isSearchHighlighted ? "url(#searchGlow)" : "none"}
+                                className={isSearchHighlighted ? "animate-pulse" : ""}
+                                style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleObjectClick(obj);
+                                }}
+                              />
+                              {/* Red center dot for search highlighting */}
+                              {isSearchHighlighted && (
+                                <circle
+                                  cx={screenCorners.reduce((sum, corner) => sum + corner[0], 0) / screenCorners.length}
+                                  cy={screenCorners.reduce((sum, corner) => sum + corner[1], 0) / screenCorners.length}
+                                  r="1"
+                                  fill="#ef4444"
+                                  className="animate-pulse"
+                                  style={{ pointerEvents: 'none' }}
+                                />
+                              )}
+                            </React.Fragment>
+                          );
+                        }
+                        return null;
+                      })}
+                    </svg>
+
+                    {/* Objects as Simple Points (Fallback for objects without quadrangle data) */}
                     {objects.map((obj) => {
+                      // Skip if object has quadrangle data (already rendered as SVG)
+                      if (obj.physical_corners && obj.physical_corners.length === 4) {
+                        return null;
+                      }
+
                       // Use real_center_x and real_center_y if available, fallback to real_center array
                       const globalX = obj.real_center_x !== undefined ? obj.real_center_x : (obj.real_center ? obj.real_center[0] : 0);
                       const globalY = obj.real_center_y !== undefined ? obj.real_center_y : (obj.real_center ? obj.real_center[1] : 0);
@@ -588,7 +704,7 @@ const LiveWarehouse = () => {
                       const centerY = (globalY / 90) * 100;  // Y-axis: top-to-bottom
 
                       const isSelected = selectedObject?.persistent_id === obj.persistent_id;
-                      const objectId = obj.persistent_id || obj.global_id || 'Unknown';
+                      const isSearchHighlighted = highlightedObject?.persistent_id === obj.persistent_id;
 
                       return (
                         <div
@@ -606,28 +722,31 @@ const LiveWarehouse = () => {
                         >
                           {/* Clean Object Box with Real Color */}
                           <div
-                            className={`w-8 h-8 border-2 shadow-lg rounded-sm transition-all duration-200 hover:scale-110 ${
+                            className={`w-8 h-8 border rounded-sm transition-all duration-200 hover:scale-110 ${
                               isSelected
                                 ? 'border-blue-400 border-4 scale-110'
-                                : 'border-white hover:border-gray-300'
-                            }`}
+                                : 'border-black hover:border-gray-600'
+                            } ${isSearchHighlighted ? 'animate-pulse' : ''}`}
                             style={{
-                              backgroundColor: obj.color_rgb
-                                ? `rgb(${obj.color_rgb[0]}, ${obj.color_rgb[1]}, ${obj.color_rgb[2]})`
-                                : obj.color_hex
-                                ? obj.color_hex
-                                : '#d97706', // Fallback amber color
-                              opacity: isSelected ? 1 : 0.85
+                              backgroundColor: getObjectColor(obj),
+                              opacity: isSelected || isSearchHighlighted ? 1 : 0.85,
+                              boxShadow: isSearchHighlighted
+                                ? '0 0 15px 3px rgba(59, 130, 246, 0.6), 0 0 25px 5px rgba(59, 130, 246, 0.3)'
+                                : 'none'
                             }}
                           >
-                            {/* Small ID Label */}
-                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-900 bg-opacity-90 text-white px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap">
-                              {objectId}
-                            </div>
+                            {/* Red center dot for search highlighting */}
+                            {isSearchHighlighted && (
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
                     })}
+
+
 
                     {/* Empty state */}
                     {objects.length === 0 && !loading && (
@@ -658,33 +777,7 @@ const LiveWarehouse = () => {
             </div>
           </div>
 
-          {/* Camera Feeds */}
-          <div className="p-4 pt-0">
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold">Live Camera Feeds</h3>
-                <div className="text-xs text-gray-400">
-                  {cameras.filter(c => c.status === 'active').length} of {cameras.length} cameras active
-                </div>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                {cameras.length > 0 ? (
-                  cameras.map((camera) => (
-                    <CameraFeed
-                      key={camera.camera_id}
-                      cameraId={camera.camera_id}
-                      status={camera.status}
-                    />
-                  ))
-                ) : (
-                  // Fallback while loading camera status
-                  [1, 2, 3, 4].map((id) => (
-                    <CameraFeed key={id} cameraId={id} status="offline" />
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          {/* Camera Feeds - HIDDEN FOR NOW - Will be enabled later with RTSP integration */}
         </div>
 
         {/* Object Details Sidebar */}
@@ -699,32 +792,73 @@ const LiveWarehouse = () => {
 
         {/* Right Sidebar */}
         <div className={`w-80 bg-gray-800 border-l border-gray-700 p-4 space-y-6 transition-all duration-300 ${sidebarOpen ? 'mr-80' : ''}`}>
+          {/* Search */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Search Pallets</h3>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Enter Pallet ID (e.g., 8001)"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {searchQuery && (
+                <button
+                  onClick={clearSearch}
+                  className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-md text-white transition-colors"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {searchQuery && !highlightedObject && (
+              <div className="mt-2 text-sm text-red-400">
+                No pallet found with ID "{searchQuery}"
+              </div>
+            )}
+            {highlightedObject && (
+              <div className="mt-2 text-sm text-green-400">
+                Found: Pallet {highlightedObject.persistent_id || highlightedObject.global_id}
+              </div>
+            )}
+          </div>
+
           {/* Stats */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Live Analytics</h3>
             <div className="space-y-3">
               <StatCard
                 icon={<Package />}
-                label="Tracked Objects"
+                label="Tracked Pallets"
                 value={stats?.unique_objects || objects.length}
+                trend={null}
+                trendLabel=""
                 color="blue"
               />
               <StatCard
                 icon={<Activity />}
-                label="Total Detections"
-                value={stats?.total_detections || 0}
+                label="Space Utilization"
+                value="60%"
+                trend={null}
+                trendLabel=""
                 color="green"
               />
               <StatCard
                 icon={<TrendingUp />}
                 label="Recent Activity"
                 value={stats?.recent_objects || 0}
+                trend={null}
+                trendLabel=""
                 color="amber"
               />
               <StatCard
                 icon={<Clock />}
                 label="System Uptime"
                 value="24h"
+                trend={null}
+                trendLabel=""
                 color="green"
               />
             </div>

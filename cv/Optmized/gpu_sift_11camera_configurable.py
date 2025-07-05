@@ -135,28 +135,25 @@ class GPUSIFTPalletDetector:
             if self.device.type == 'cuda':
                 torch.cuda.empty_cache()
             
-            # Convert to detection format (SAME as combined filtering)
+            # Convert to detection format (SAME as CPU version - FIXED)
             detections = []
             if results and len(results) > 0:
-                result = results[0]
-                boxes = result.get("boxes", [])
-                scores = result.get("scores", [])
-                labels = result.get("labels", [])
-                
-                for box, score, label in zip(boxes, scores, labels):
-                    if score >= self.confidence_threshold:
-                        x1, y1, x2, y2 = box.tolist()
-                        
-                        detection = {
-                            'bbox': [int(x1), int(y1), int(x2), int(y2)],
-                            'corners': [[int(x1), int(y1)], [int(x2), int(y1)], [int(x2), int(y2)], [int(x1), int(y2)]],  # 4 corners of bounding box
-                            'confidence': float(score),
-                            'label': label,
-                            'area': int((x2 - x1) * (y2 - y1)),
-                            'prompt_used': self.current_prompt,
-                            'shape_type': 'quadrangle'
-                        }
-                        detections.append(detection)
+                boxes = results[0]["boxes"].cpu().numpy()
+                scores = results[0]["scores"].cpu().numpy()
+
+                for box, score in zip(boxes, scores):
+                    x1, y1, x2, y2 = map(int, box)
+                    area = (x2 - x1) * (y2 - y1)
+
+                    detection = {
+                        'bbox': [x1, y1, x2, y2],
+                        'corners': [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],  # 4 corners of bounding box
+                        'confidence': float(score),
+                        'area': area,
+                        'prompt_used': self.current_prompt,
+                        'shape_type': 'quadrangle'
+                    }
+                    detections.append(detection)
             
             return detections
             
@@ -664,10 +661,10 @@ class GPUSIFTWarehouseTracker:
         # Warehouse configuration
         self.warehouse_config = get_warehouse_config()
 
-        # Filtering parameters
-        self.min_area = 15000
-        self.max_area = 1000000
-        self.grid_size = 3
+        # Filtering parameters (SAME as CPU version)
+        self.MIN_AREA = 10000
+        self.MAX_AREA = 100000
+        self.CELL_SIZE = 40
 
         # Tracking variables
         self.frame_count = 0
@@ -682,9 +679,56 @@ class GPUSIFTWarehouseTracker:
         self.coordinate_mapped_detections = []
         self.final_tracked_detections = []
 
+        # Camera connection
+        self.cap = None
+
         logger.info(f"GPU SIFT warehouse tracker initialized for {self.camera_name}")
-        logger.info(f"🚀 Detection: GPU-accelerated Grounding DINO + GPU SIFT")
-        logger.info(f"🔧 Processing: CPU-based Coordinates, Database")
+
+    def connect_camera(self) -> bool:
+        """Connect to camera stream"""
+        try:
+            from cv.configs.config import Config
+
+            # Get camera configuration
+            rtsp_url = Config.RTSP_CAMERA_URLS.get(self.camera_id, "")
+
+            if not rtsp_url:
+                logger.warning(f"⚠️ No RTSP URL configured for camera {self.camera_id}")
+                return False
+
+            logger.info(f"🎥 Connecting to {self.camera_name} (ID: {self.camera_id}): {rtsp_url}")
+
+            # Initialize video capture
+            self.cap = cv2.VideoCapture(rtsp_url)
+
+            if not self.cap.isOpened():
+                logger.error(f"❌ Failed to connect to {self.camera_name}")
+                return False
+
+            # Set camera properties for better performance
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer to minimize delay
+            self.cap.set(cv2.CAP_PROP_FPS, 10)  # Limit FPS for processing
+
+            # Set resolution to 1080p for optimal performance
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
+            # Verify resolution settings
+            actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            logger.info(f"📺 {self.camera_name} resolution set to: {actual_width}x{actual_height}")
+
+            logger.info(f"✅ Connected to {self.camera_name}")
+            return True
+
+        except ImportError:
+            logger.error("❌ Config not available - cannot connect to camera")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error connecting to {self.camera_name}: {e}")
+            if self.cap:
+                self.cap.release()
+            return False
 
     def process_frame(self, frame: np.ndarray) -> np.ndarray:
         """Process a single frame through the complete GPU SIFT pipeline"""
@@ -729,7 +773,7 @@ class GPUSIFTWarehouseTracker:
         return result_frame
 
     def apply_area_filter(self, detections: List[Dict]) -> List[Dict]:
-        """Filter detections by area"""
+        """Filter detections by area (SAME as CPU version)"""
         if not detections:
             return []
 
@@ -737,52 +781,79 @@ class GPUSIFTWarehouseTracker:
             accepted = []
             for detection in detections:
                 area = detection.get('area', 0)
-                if self.min_area <= area <= self.max_area:
+                if self.MIN_AREA <= area <= self.MAX_AREA:
                     accepted.append(detection)
 
             return accepted
 
         except Exception as e:
-            logger.error(f"Area filtering failed: {e}")
+            logger.error(f"GPU area filtering failed: {e}")
+            return [d for d in detections if self.MIN_AREA <= d.get('area', 0) <= self.MAX_AREA]
+
+    def calculate_center(self, bbox: List[int]) -> Tuple[int, int]:
+        """Calculate center point of bounding box (SAME as CPU version)"""
+        x1, y1, x2, y2 = bbox
+        center_x = int((x1 + x2) / 2)
+        center_y = int((y1 + y2) / 2)
+        return center_x, center_y
+
+    def get_grid_cell(self, center: Tuple[int, int]) -> Tuple[int, int]:
+        """Get grid cell coordinates for a center point (SAME as CPU version)"""
+        x, y = center
+        cell_x = int(x // self.CELL_SIZE)
+        cell_y = int(y // self.CELL_SIZE)
+        return cell_x, cell_y
+
+    def get_neighbor_cells(self, cell: Tuple[int, int]) -> List[Tuple[int, int]]:
+        """Get all 9 cells (current + 8 neighbors) for a given cell (SAME as CPU version)"""
+        cell_x, cell_y = cell
+        neighbors = []
+
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                neighbor_cell = (cell_x + dx, cell_y + dy)
+                neighbors.append(neighbor_cell)
+
+        return neighbors
+
+    def apply_grid_filter(self, detections: List[Dict], frame: np.ndarray = None) -> List[Dict]:
+        """GPU grid cell filtering (SAME as CPU version)"""
+        if len(detections) <= 1:
             return detections
 
-    def apply_grid_filter(self, detections: List[Dict], frame: np.ndarray) -> List[Dict]:
-        """Apply grid-based filtering to remove duplicates"""
-        if not detections:
-            return []
-
         try:
-            height, width = frame.shape[:2]
-            cell_width = width // self.grid_size
-            cell_height = height // self.grid_size
-
-            # Group detections by grid cell
-            grid_cells = {}
-
+            # Calculate centers and grid cells for all detections
             for detection in detections:
-                bbox = detection['bbox']
-                center_x = (bbox[0] + bbox[2]) // 2
-                center_y = (bbox[1] + bbox[3]) // 2
+                center = self.calculate_center(detection['bbox'])
+                detection['center'] = center
+                detection['grid_cell'] = self.get_grid_cell(center)
 
-                cell_x = min(center_x // cell_width, self.grid_size - 1)
-                cell_y = min(center_y // cell_height, self.grid_size - 1)
-                cell_key = (cell_x, cell_y)
+            # Sort by confidence (keep higher confidence detections first)
+            sorted_detections = sorted(detections, key=lambda x: x['confidence'], reverse=True)
 
-                if cell_key not in grid_cells:
-                    grid_cells[cell_key] = []
-                grid_cells[cell_key].append(detection)
+            occupied_cells: Set[Tuple[int, int]] = set()
+            accepted = []
 
-            # Keep only the highest confidence detection per cell
-            filtered_detections = []
-            for cell_detections in grid_cells.values():
-                if cell_detections:
-                    best_detection = max(cell_detections, key=lambda d: d.get('confidence', 0))
-                    filtered_detections.append(best_detection)
+            for detection in sorted_detections:
+                cell = detection['grid_cell']
+                neighbor_cells = self.get_neighbor_cells(cell)
 
-            return filtered_detections
+                # Check if any of the 9 cells are already occupied
+                conflict = False
+                for neighbor_cell in neighbor_cells:
+                    if neighbor_cell in occupied_cells:
+                        conflict = True
+                        break
+
+                if not conflict:
+                    # Accept this detection
+                    occupied_cells.add(cell)
+                    accepted.append(detection)
+
+            return accepted
 
         except Exception as e:
-            logger.error(f"Grid filtering failed: {e}")
+            logger.error(f"GPU grid filtering failed: {e}")
             return detections
 
     def translate_to_physical_coordinates(self, detections: List[Dict], frame_width: int, frame_height: int) -> List[Dict]:
@@ -990,69 +1061,191 @@ class GPUSIFTWarehouseTracker:
             return False
         return True
 
+class MultiCameraGPUSIFTSystem:
+    """Multi-camera GPU SIFT-based tracking system"""
+
+    def __init__(self, active_cameras, gui_cameras, enable_gui=True):
+        self.active_cameras = active_cameras
+        self.gui_cameras = gui_cameras if enable_gui else []
+        self.enable_gui = enable_gui
+        self.trackers = {}
+        self.running = False
+
+        logger.info("🎛️ Multi-Camera GPU SIFT System Configuration:")
+        logger.info(f"📹 Active Cameras: {self.active_cameras}")
+        logger.info(f"🖥️ GUI Cameras: {self.gui_cameras}")
+        logger.info(f"🎛️ GUI Mode: {'ENABLED' if self.enable_gui else 'HEADLESS'}")
+
+    def initialize_cameras(self) -> bool:
+        """Initialize all active cameras"""
+        logger.info(f"🔧 Initializing {len(self.active_cameras)} cameras...")
+
+        connected_cameras = 0
+        for cam_id in self.active_cameras:
+            try:
+                logger.info(f"🔧 Initializing Camera {cam_id}...")
+                tracker = GPUSIFTWarehouseTracker(camera_id=cam_id)
+
+                if tracker.connect_camera():
+                    self.trackers[cam_id] = tracker
+                    connected_cameras += 1
+                    logger.info(f"✅ Camera {cam_id} connected successfully")
+                else:
+                    logger.error(f"❌ Camera {cam_id} connection failed")
+
+            except Exception as e:
+                logger.error(f"❌ Camera {cam_id} initialization failed: {e}")
+
+        if connected_cameras == 0:
+            logger.error("❌ No cameras connected successfully!")
+            return False
+
+        logger.info(f"🚀 {connected_cameras} out of {len(self.active_cameras)} cameras initialized successfully!")
+        return True
+
+    def run(self):
+        """Run multi-camera GPU SIFT tracking"""
+        if not self.initialize_cameras():
+            return
+
+        self.running = True
+        frame_count = 0
+
+        try:
+            while self.running:
+                frame_count += 1
+
+                # Process each active camera
+                for cam_id in self.active_cameras:
+                    if cam_id not in self.trackers:
+                        continue
+
+                    tracker = self.trackers[cam_id]
+                    if tracker.cap and tracker.cap.isOpened():
+                        ret, frame = tracker.cap.read()
+                        if ret:
+                            # Process frame with GPU SIFT
+                            processed_frame = tracker.process_frame(frame)
+
+                            # Show GUI if enabled for this camera
+                            if self.enable_gui and cam_id in self.gui_cameras:
+                                cv2.imshow(f"GPU SIFT Camera {cam_id}", processed_frame)
+
+                # Handle key presses
+                if self.enable_gui:
+                    key = cv2.waitKey(1) & 0xFF
+                    if not self.handle_key_press(key):
+                        break
+
+                # Performance monitoring
+                if frame_count % 100 == 0:
+                    logger.info(f"📊 Processed {frame_count} frames across {len(self.active_cameras)} cameras")
+
+        except KeyboardInterrupt:
+            logger.info("🛑 Keyboard interrupt received")
+        except Exception as e:
+            logger.error(f"❌ Error in main loop: {e}")
+        finally:
+            self.shutdown()
+
+    def handle_key_press(self, key) -> bool:
+        """Handle keyboard input for all cameras"""
+        if key == ord('n'):  # Next prompt
+            for tracker in self.trackers.values():
+                tracker.detector.next_prompt()
+            logger.info(f"🔄 All cameras switched to next prompt")
+        elif key == ord('p'):  # Previous prompt
+            for tracker in self.trackers.values():
+                tracker.detector.previous_prompt()
+            logger.info(f"🔄 All cameras switched to previous prompt")
+        elif key == ord('q'):  # Quit
+            return False
+        return True
+
+    def shutdown(self):
+        """Shutdown all cameras and cleanup"""
+        logger.info("🛑 Shutting down GPU SIFT multi-camera system...")
+        self.running = False
+
+        for cam_id, tracker in self.trackers.items():
+            try:
+                if tracker.cap:
+                    tracker.cap.release()
+                logger.info(f"✅ Camera {cam_id} released")
+            except Exception as e:
+                logger.error(f"❌ Error releasing camera {cam_id}: {e}")
+
+        if self.enable_gui:
+            cv2.destroyAllWindows()
+        logger.info("GPU SIFT tracking system shutdown complete")
+
+# 📹 SIMPLE CAMERA CONFIGURATION - EDIT THESE LISTS:
+# =======================================================
+
+# 🎯 DETECTION CAMERAS: Add camera numbers you want to run detection on
+ACTIVE_CAMERAS = [11]  # Cameras that will detect objects
+
+# 🖥️ GUI CAMERAS: Add camera numbers you want to see windows for
+GUI_CAMERAS = [11]  # Cameras that will show GUI windows (subset of ACTIVE_CAMERAS)
+
+# 🎛️ GUI CONFIGURATION
+ENABLE_GUI = True  # Set to False for headless mode
+ENABLE_CONSOLE_LOGGING = True  # Print logs to console
+
+print(f"🔥 GPU SIFT RUNNING CAMERAS: {ACTIVE_CAMERAS}")
+print(f"🖥️ GUI WINDOWS FOR: {GUI_CAMERAS if ENABLE_GUI else 'NONE (HEADLESS)'}")
+
 # Main execution function
 def main():
     """Main function to run GPU SIFT warehouse tracking"""
     import argparse
 
     parser = argparse.ArgumentParser(description='GPU SIFT Warehouse Tracking System')
-    parser.add_argument('--camera', type=int, default=8, help='Camera ID to use (1-11)')
-    parser.add_argument('--cameras', nargs='+', type=int, help='Multiple camera IDs (e.g., --cameras 1 2 3)')
+    parser.add_argument('--camera', type=int, help='Single camera ID to use (1-11) - overrides environment')
+    parser.add_argument('--cameras', nargs='+', type=int, help='Multiple camera IDs (e.g., --cameras 1 2 3) - overrides environment')
     args = parser.parse_args()
 
+    # Use command line arguments if provided, otherwise use environment configuration
     if args.cameras:
         camera_ids = args.cameras
-    else:
+        gui_cameras = args.cameras
+        print(f"🎯 Using command line cameras: {camera_ids}")
+    elif args.camera:
         camera_ids = [args.camera]
+        gui_cameras = [args.camera]
+        print(f"🎯 Using command line camera: {args.camera}")
+    else:
+        camera_ids = ACTIVE_CAMERAS
+        gui_cameras = GUI_CAMERAS
+        print(f"🎯 Using configured cameras: {camera_ids}")
+
+    print("🚀 GPU SIFT WAREHOUSE TRACKING SYSTEM")
+    print("=" * 80)
+    print("CONFIGURATION:")
+    print(f"📹 Active Cameras: {camera_ids} ({len(camera_ids)} cameras)")
+    print(f"🖥️ GUI Cameras: {gui_cameras if ENABLE_GUI else 'DISABLED'} ({len(gui_cameras) if ENABLE_GUI else 0} windows)")
+    print(f"🎛️ GUI Mode: {'ENABLED' if ENABLE_GUI else 'HEADLESS'}")
+    print("=" * 80)
+    print("GPU SIFT PROCESSING:")
+    print("1) 🚀 GPU Detection (Grounding DINO)")
+    print("2) 🚀 CPU Area + Grid Cell Filtering")
+    print("3) 🚀 CPU Physical Coordinate Translation")
+    print("4) 🚀 GPU SIFT Feature Matching")
+    print("5) 🚀 CPU Persistent Object IDs")
+    print("6) 🚀 CPU Cross-Frame Tracking & Database")
+    print("=" * 80)
 
     logger.info(f"🚀 Starting GPU SIFT warehouse tracking for cameras: {camera_ids}")
 
-    # Initialize trackers for each camera
-    trackers = {}
-    for camera_id in camera_ids:
-        try:
-            tracker = GPUSIFTWarehouseTracker(camera_id)
-            trackers[camera_id] = tracker
-            logger.info(f"✅ Camera {camera_id} tracker initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize camera {camera_id}: {e}")
+    # Initialize multi-camera GPU SIFT system
+    multi_camera_system = MultiCameraGPUSIFTSystem(
+        active_cameras=camera_ids,
+        gui_cameras=gui_cameras,
+        enable_gui=ENABLE_GUI
+    )
 
-    if not trackers:
-        logger.error("❌ No trackers initialized successfully")
-        return
-
-    # For demo purposes, create a simple test loop
-    logger.info("🎯 GPU SIFT tracking system ready!")
-    logger.info("📋 Controls:")
-    logger.info("   'n' - Next prompt")
-    logger.info("   'p' - Previous prompt")
-    logger.info("   'q' - Quit")
-
-    # Start camera processing
-    try:
-        from cv.configs.config import Config
-
-        # Process each camera
-        for camera_id, tracker in trackers.items():
-            logger.info(f"🎥 Starting camera {camera_id} processing...")
-
-            # Get camera configuration
-            camera_name = Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}")
-            rtsp_url = Config.RTSP_CAMERA_URLS.get(camera_id, "")
-
-            if not rtsp_url:
-                logger.warning(f"⚠️ No RTSP URL configured for camera {camera_id}")
-                continue
-
-            # Start camera stream processing
-            process_camera_stream(tracker, camera_id, camera_name, rtsp_url)
-
-    except ImportError:
-        logger.error("❌ Config not available - cannot start camera streams")
-    except Exception as e:
-        logger.error(f"❌ Error starting camera streams: {e}")
-
-    logger.info("✅ GPU SIFT warehouse tracking system completed!")
+    # Run the system
+    multi_camera_system.run()
 
 def process_camera_stream(tracker, camera_id: int, camera_name: str, rtsp_url: str):
     """Process video stream from a single camera"""

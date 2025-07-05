@@ -2,12 +2,24 @@ import React, { useState, useEffect } from 'react';
 
 interface TrackedObject {
   persistent_id: number;
-  center: { x: number; y: number };
-  real_center?: [number, number] | null;
+  global_id?: number;
+  camera_id?: number;
+  real_center: [number, number];  // Required - physical coordinates in feet
+  bbox?: number[];  // [x1, y1, x2, y2] bounding box coordinates
+  corners?: number[][];  // 4-point pixel coordinates [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
+  physical_corners?: number[][];  // 4-point physical coordinates in feet
+  shape_type?: string;  // 'quadrangle' or 'rectangle'
   confidence: number;
+  area?: number;
   age_seconds: number;
   times_seen: number;
   status?: string;
+  color_rgb?: number[];
+  color_hsv?: number[];
+  color_hex?: string;
+  color_name?: string;
+  color_confidence?: number;
+  extraction_method?: string;
 }
 
 interface WarehouseConfig {
@@ -30,6 +42,9 @@ const WorkingWarehouseView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCameraZones, setShowCameraZones] = useState(true);
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
+  const [useQuadrangles, setUseQuadrangles] = useState(true);
+  const [selectedObject, setSelectedObject] = useState<TrackedObject | null>(null);
 
   // Camera zones - UPDATED to match calibration files
   const cameraZones = [
@@ -94,6 +109,125 @@ const WorkingWarehouseView: React.FC = () => {
     return `${Math.round(seconds / 3600)}h`;
   };
 
+  // Use the original simple color system from database
+  const getObjectColor = (object: TrackedObject) => {
+    return getStatusColor(object.status, object.age_seconds);
+  };
+
+  // Convert physical coordinates to screen percentage
+  const physicalToScreen = (physicalCoord: number[], warehouseWidthFt: number, warehouseLengthFt: number) => {
+    const [physX, physY] = physicalCoord;
+    // FIXED: Flipped mapping so Camera 8 (120-180ft) appears on YOUR LEFT side
+    const x = ((warehouseWidthFt - physX) / warehouseWidthFt) * 100; // Flipped mapping
+    const y = (physY / warehouseLengthFt) * 100; // Y-axis correct
+
+
+    return [x, y];
+  };
+
+  // Render object as quadrangle if 4 corners available, otherwise as center point
+  const renderObject = (object: TrackedObject, warehouseWidthFt: number, warehouseLengthFt: number) => {
+    const objectColor = getObjectColor(object);
+    const elements = [];
+
+
+
+    // Check if we should use quadrangle rendering
+    if (useQuadrangles &&
+        object.physical_corners?.length === 4 &&
+        object.physical_corners.every(corner =>
+          Array.isArray(corner) &&
+          corner.length >= 2 &&
+          corner[0] !== null &&
+          corner[1] !== null &&
+          !isNaN(corner[0]) &&
+          !isNaN(corner[1])
+        )) {
+
+      // Convert all 4 physical corners to screen coordinates
+      const screenCorners = object.physical_corners.map(corner =>
+        physicalToScreen(corner, warehouseWidthFt, warehouseLengthFt)
+      );
+
+      // Create SVG polygon points string
+      const points = screenCorners.map(corner => `${corner[0]},${corner[1]}`).join(' ');
+
+      elements.push(
+        <polygon
+          key={`quad-${object.persistent_id}`}
+          points={points}
+          fill={objectColor}
+          stroke="#000000"
+          strokeWidth="0.2"
+          opacity="0.8"
+          style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+          onClick={() => setSelectedObject(object)}
+        />
+      );
+
+      // Add center point for reference
+      if (object.real_center) {
+        const [centerX, centerY] = physicalToScreen(object.real_center, warehouseWidthFt, warehouseLengthFt);
+        elements.push(
+          <circle
+            key={`center-${object.persistent_id}`}
+            cx={centerX}
+            cy={centerY}
+            r="1"
+            fill="#000000"
+            opacity="0.8"
+          />
+        );
+      }
+    } else {
+      // Fallback to center point rendering
+      if (object.real_center && Array.isArray(object.real_center) && object.real_center.length >= 2) {
+        const [x, y] = physicalToScreen(object.real_center, warehouseWidthFt, warehouseLengthFt);
+
+        elements.push(
+          <circle
+            key={`center-${object.persistent_id}`}
+            cx={x}
+            cy={y}
+            r="1.5"
+            fill={objectColor}
+            stroke="#000000"
+            strokeWidth="0.2"
+            opacity="0.8"
+            style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+            onClick={() => setSelectedObject(object)}
+          />
+        );
+      }
+    }
+
+    // Add bounding box if enabled and available
+    if (showBoundingBoxes && object.bbox && object.real_center) {
+      const [centerX, centerY] = physicalToScreen(object.real_center, warehouseWidthFt, warehouseLengthFt);
+
+      // Estimate bounding box size in screen coordinates (simplified)
+      const boxWidth = 10; // Fixed width for visualization
+      const boxHeight = 8; // Fixed height for visualization
+
+      elements.push(
+        <rect
+          key={`bbox-${object.persistent_id}`}
+          x={centerX - boxWidth/2}
+          y={centerY - boxHeight/2}
+          width={boxWidth}
+          height={boxHeight}
+          fill="none"
+          stroke="#ff6b6b"
+          strokeWidth="1"
+          strokeDasharray="3,3"
+          opacity="0.8"
+        />
+      );
+    }
+
+    return <g key={`object-${object.persistent_id}`}>{elements}</g>;
+  };
+
   if (loading) {
     return (
       <div className="bg-gray-900 rounded-xl p-8 h-full flex items-center justify-center border border-gray-700 shadow-2xl">
@@ -109,11 +243,11 @@ const WorkingWarehouseView: React.FC = () => {
   }
 
   return (
-    <div className="bg-gray-900 rounded-xl p-8 h-full border border-gray-700 shadow-2xl">
+    <div className="bg-red-900 rounded-xl p-8 h-full border border-red-700 shadow-2xl">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-3xl font-bold text-white tracking-tight">Live Object Tracking</h2>
+          <h2 className="text-3xl font-bold text-red-500 tracking-tight">🔴 TESTING CHANGES - Live Object Tracking</h2>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -134,6 +268,46 @@ const WorkingWarehouseView: React.FC = () => {
               }`}
             >
               📹 {showCameraZones ? 'Hide' : 'Show'} Zones
+            </button>
+            <button
+              onClick={() => setUseQuadrangles(!useQuadrangles)}
+              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                useQuadrangles
+                  ? 'bg-purple-600 border-purple-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              🔷 {useQuadrangles ? 'Quadrangles' : 'Center Points'}
+            </button>
+            <button
+              onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
+              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                showBoundingBoxes
+                  ? 'bg-orange-600 border-orange-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              📦 {showBoundingBoxes ? 'Hide' : 'Show'} Boxes
+            </button>
+            <button
+              onClick={() => setUseQuadrangles(!useQuadrangles)}
+              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                useQuadrangles
+                  ? 'bg-purple-600 border-purple-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              🔷 {useQuadrangles ? 'Quadrangles' : 'Center Points'}
+            </button>
+            <button
+              onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
+              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                showBoundingBoxes
+                  ? 'bg-orange-600 border-orange-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              📦 {showBoundingBoxes ? 'Hide' : 'Show'} Boxes
             </button>
           </div>
         </div>
@@ -255,53 +429,72 @@ const WorkingWarehouseView: React.FC = () => {
               );
             })}
 
-            {/* Modern object markers */}
+            {/* Enhanced object markers with quadrangle support */}
+            <svg
+              className="absolute inset-0 w-full h-full"
+              style={{ zIndex: 10, pointerEvents: 'none' }}
+              width="100%"
+              height="100%"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="0.5" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
+
+              {/* Simple test to verify SVG is working */}
+              <circle cx="10" cy="10" r="2" fill="#ff0000" opacity="1" />
+
+              {objects.map((object) => {
+                const warehouseWidthFt = config.width_feet || config.width_meters * 3.28084;
+                const warehouseLengthFt = config.length_feet || config.length_meters * 3.28084;
+
+                return renderObject(object, warehouseWidthFt, warehouseLengthFt);
+              })}
+            </svg>
+
+            {/* Object ID labels overlay */}
             {objects.map((object) => {
-              if (!object.real_center || !Array.isArray(object.real_center) || object.real_center.length < 2) return null;
+              // Check if real_center exists
+              if (!object.real_center) {
+                return null;
+              }
 
               const warehouseWidthFt = config.width_feet || config.width_meters * 3.28084;
               const warehouseLengthFt = config.length_feet || config.length_meters * 3.28084;
-
-              // FIXED: Flipped mapping so Camera 8 (120-180ft) appears on YOUR LEFT side
-              const x = ((warehouseWidthFt - object.real_center[0]) / warehouseWidthFt) * 100; // Flipped mapping
-              const y = (object.real_center[1] / warehouseLengthFt) * 100; // Y-axis correct
-              const color = getStatusColor(object.status, object.age_seconds);
+              const [x, y] = physicalToScreen(object.real_center, warehouseWidthFt, warehouseLengthFt);
 
               return (
                 <div
-                  key={object.persistent_id}
-                  className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group"
-                  style={{ left: `${x}%`, top: `${y}%` }}
+                  key={`label-${object.persistent_id}`}
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group pointer-events-auto"
+                  style={{ left: `${x}%`, top: `${y}%`, zIndex: 20 }}
+                  onClick={() => setSelectedObject(object)}
                 >
-                  {/* Outer glow ring */}
-                  <div
-                    className="absolute w-6 h-6 rounded-full opacity-30 animate-pulse"
-                    style={{
-                      backgroundColor: color,
-                      transform: 'translate(-50%, -50%)',
-                      left: '50%',
-                      top: '50%'
-                    }}
-                  />
-
-                  {/* Main marker dot */}
-                  <div
-                    className="relative w-4 h-4 rounded-full border-2 border-white shadow-lg transition-all duration-200 group-hover:scale-125"
-                    style={{ backgroundColor: color }}
-                  />
-
                   {/* ID label with modern styling */}
-                  <div className="absolute top-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-0.5 rounded-full font-semibold border border-gray-600 shadow-lg">
+                  <div className="bg-gray-800 text-white text-xs px-2 py-0.5 rounded-full font-semibold border border-gray-600 shadow-lg">
                     {object.persistent_id}
                   </div>
 
-                  {/* Modern tooltip */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap z-20 border border-gray-600 shadow-xl">
+                  {/* Enhanced tooltip with quadrangle info */}
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap z-30 border border-gray-600 shadow-xl">
                     <div className="space-y-1">
                       <div className="flex justify-between gap-3">
                         <span className="text-gray-400">ID:</span>
                         <span className="font-semibold">{object.persistent_id}</span>
                       </div>
+                      {object.shape_type && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-400">Shape:</span>
+                          <span className="text-purple-400">{object.shape_type}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between gap-3">
                         <span className="text-gray-400">Age:</span>
                         <span>{formatAge(object.age_seconds)}</span>
@@ -314,6 +507,18 @@ const WorkingWarehouseView: React.FC = () => {
                         <span className="text-gray-400">Position:</span>
                         <span className="text-blue-400">({object.real_center[0].toFixed(1)}ft, {object.real_center[1].toFixed(1)}ft)</span>
                       </div>
+                      {object.area && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-400">Area:</span>
+                          <span className="text-yellow-400">{object.area.toLocaleString()}px</span>
+                        </div>
+                      )}
+                      {object.color_name && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-400">Color:</span>
+                          <span style={{ color: object.color_hex || '#fff' }}>{object.color_name}</span>
+                        </div>
+                      )}
                     </div>
                     {/* Tooltip arrow */}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
@@ -345,12 +550,17 @@ const WorkingWarehouseView: React.FC = () => {
             )}
           </div>
 
-          {/* Coordinate indicators - FIXED for flipped mapping */}
+          {/* Debug info and coordinate indicators */}
           <div className="absolute -bottom-8 left-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
+            Objects: {objects.length} | Quadrangles: {useQuadrangles ? 'ON' : 'OFF'} | Boxes: {showBoundingBoxes ? 'ON' : 'OFF'}
+            {objects.length > 0 && (
+              <span className="ml-2 text-green-400">
+                | Sample: ID={objects[0].persistent_id}, Color={objects[0].color_name}, Corners={objects[0].physical_corners?.length || 0}
+              </span>
+            )}
           </div>
           <div className="absolute -bottom-8 right-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            (0, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
+            ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
           </div>
           <div className="absolute -top-8 left-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
             ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, 0)
@@ -361,32 +571,215 @@ const WorkingWarehouseView: React.FC = () => {
         </div>
       </div>
 
-      {/* Modern legend */}
+      {/* Object Details Sidebar */}
+      {selectedObject && (
+        <div className="fixed top-4 right-4 w-80 bg-gray-800 rounded-xl border border-gray-600 shadow-2xl z-50 max-h-[80vh] overflow-y-auto">
+          <div className="p-4 border-b border-gray-600 flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-white">Object Details</h3>
+            <button
+              onClick={() => setSelectedObject(null)}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="p-4 space-y-4">
+            {/* Basic Information */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold text-gray-300 border-b border-gray-600 pb-1">Basic Information</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="text-gray-400">ID:</div>
+                <div className="text-white font-semibold">{selectedObject.persistent_id}</div>
+
+                {selectedObject.global_id && (
+                  <>
+                    <div className="text-gray-400">Global ID:</div>
+                    <div className="text-blue-400">{selectedObject.global_id}</div>
+                  </>
+                )}
+
+                {selectedObject.camera_id && (
+                  <>
+                    <div className="text-gray-400">Camera:</div>
+                    <div className="text-green-400">{selectedObject.camera_id}</div>
+                  </>
+                )}
+
+                <div className="text-gray-400">Shape:</div>
+                <div className="text-purple-400">{selectedObject.shape_type || 'rectangle'}</div>
+
+                <div className="text-gray-400">Confidence:</div>
+                <div className="text-green-400">{(selectedObject.confidence * 100).toFixed(1)}%</div>
+
+                <div className="text-gray-400">Age:</div>
+                <div className="text-yellow-400">{formatAge(selectedObject.age_seconds)}</div>
+
+                <div className="text-gray-400">Times Seen:</div>
+                <div className="text-cyan-400">{selectedObject.times_seen}</div>
+
+                {selectedObject.area && (
+                  <>
+                    <div className="text-gray-400">Area:</div>
+                    <div className="text-orange-400">{selectedObject.area.toLocaleString()}px</div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Coordinate Information */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold text-gray-300 border-b border-gray-600 pb-1">Coordinates</h4>
+
+              {/* Physical Center */}
+              {selectedObject.real_center && (
+                <div className="bg-gray-700 p-3 rounded-lg">
+                  <div className="text-xs text-gray-400 mb-1">Physical Center</div>
+                  <div className="text-blue-400 font-mono">
+                    ({selectedObject.real_center[0]?.toFixed(2)}ft, {selectedObject.real_center[1]?.toFixed(2)}ft)
+                  </div>
+                </div>
+              )}
+
+              {/* Bounding Box */}
+              {selectedObject.bbox && (
+                <div className="bg-gray-700 p-3 rounded-lg">
+                  <div className="text-xs text-gray-400 mb-1">Bounding Box (pixels)</div>
+                  <div className="text-orange-400 font-mono text-xs">
+                    Top-Left: ({selectedObject.bbox[0]}, {selectedObject.bbox[1]})<br/>
+                    Bottom-Right: ({selectedObject.bbox[2]}, {selectedObject.bbox[3]})
+                  </div>
+                </div>
+              )}
+
+              {/* Physical Corners */}
+              {selectedObject.physical_corners && selectedObject.physical_corners.length === 4 && (
+                <div className="bg-gray-700 p-3 rounded-lg">
+                  <div className="text-xs text-gray-400 mb-1">Physical Corners (feet)</div>
+                  <div className="text-purple-400 font-mono text-xs space-y-1">
+                    {selectedObject.physical_corners.map((corner, i) => (
+                      <div key={i}>
+                        Corner {i+1}: ({corner[0]?.toFixed(2)}ft, {corner[1]?.toFixed(2)}ft)
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pixel Corners */}
+              {selectedObject.corners && selectedObject.corners.length === 4 && (
+                <div className="bg-gray-700 p-3 rounded-lg">
+                  <div className="text-xs text-gray-400 mb-1">Pixel Corners</div>
+                  <div className="text-yellow-400 font-mono text-xs space-y-1">
+                    {selectedObject.corners.map((corner, i) => (
+                      <div key={i}>
+                        Corner {i+1}: ({corner[0]}, {corner[1]})
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Color Information */}
+            {(selectedObject.color_name || selectedObject.color_hex) && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-gray-300 border-b border-gray-600 pb-1">Color Information</h4>
+                <div className="bg-gray-700 p-3 rounded-lg">
+                  {selectedObject.color_name && (
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-gray-400 text-sm">Detected Color:</span>
+                      <span
+                        className="font-semibold"
+                        style={{ color: selectedObject.color_hex || '#fff' }}
+                      >
+                        {selectedObject.color_name}
+                      </span>
+                    </div>
+                  )}
+                  {selectedObject.color_hex && (
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-gray-400 text-sm">Hex:</span>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-4 h-4 rounded border border-gray-500"
+                          style={{ backgroundColor: selectedObject.color_hex }}
+                        ></div>
+                        <span className="font-mono text-sm">{selectedObject.color_hex}</span>
+                      </div>
+                    </div>
+                  )}
+                  {selectedObject.color_confidence && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 text-sm">Confidence:</span>
+                      <span className="text-green-400">{(selectedObject.color_confidence * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced legend with display modes */}
       <div className="mt-8 flex justify-center">
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-600 shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-4 text-center">Object Status Legend</h3>
-          <div className="flex gap-6 text-sm">
-            <div className="flex items-center gap-3 bg-gray-700 px-4 py-2 rounded-lg border border-gray-600">
-              <div className="relative">
-                <div className="w-4 h-4 rounded-full bg-yellow-400 border-2 border-white shadow-lg"></div>
-                <div className="absolute w-6 h-6 rounded-full bg-yellow-400 opacity-20 animate-pulse" style={{ transform: 'translate(-25%, -25%)' }}></div>
+          <h3 className="text-sm font-semibold text-white mb-4 text-center">Display Legend</h3>
+
+          {/* Object Status */}
+          <div className="mb-6">
+            <h4 className="text-xs font-semibold text-gray-400 mb-3">Object Status</h4>
+            <div className="flex gap-4 text-sm">
+              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
+                <div className="relative">
+                  <div className="w-3 h-3 rounded-full bg-yellow-400 border border-white shadow-lg"></div>
+                  <div className="absolute w-5 h-5 rounded-full bg-yellow-400 opacity-20 animate-pulse" style={{ transform: 'translate(-20%, -20%)' }}></div>
+                </div>
+                <span className="text-gray-300 font-medium">New (&lt;5s)</span>
               </div>
-              <span className="text-gray-300 font-medium">New (&lt;5s)</span>
-            </div>
-            <div className="flex items-center gap-3 bg-gray-700 px-4 py-2 rounded-lg border border-gray-600">
-              <div className="relative">
-                <div className="w-4 h-4 rounded-full bg-green-400 border-2 border-white shadow-lg"></div>
-                <div className="absolute w-6 h-6 rounded-full bg-green-400 opacity-20 animate-pulse" style={{ transform: 'translate(-25%, -25%)' }}></div>
+              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
+                <div className="relative">
+                  <div className="w-3 h-3 rounded-full bg-green-400 border border-white shadow-lg"></div>
+                  <div className="absolute w-5 h-5 rounded-full bg-green-400 opacity-20 animate-pulse" style={{ transform: 'translate(-20%, -20%)' }}></div>
+                </div>
+                <span className="text-gray-300 font-medium">Tracking (5s-1m)</span>
               </div>
-              <span className="text-gray-300 font-medium">Tracking (5s-1m)</span>
-            </div>
-            <div className="flex items-center gap-3 bg-gray-700 px-4 py-2 rounded-lg border border-gray-600">
-              <div className="relative">
-                <div className="w-4 h-4 rounded-full bg-teal-400 border-2 border-white shadow-lg"></div>
-                <div className="absolute w-6 h-6 rounded-full bg-teal-400 opacity-20 animate-pulse" style={{ transform: 'translate(-25%, -25%)' }}></div>
+              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
+                <div className="relative">
+                  <div className="w-3 h-3 rounded-full bg-teal-400 border border-white shadow-lg"></div>
+                  <div className="absolute w-5 h-5 rounded-full bg-teal-400 opacity-20 animate-pulse" style={{ transform: 'translate(-20%, -20%)' }}></div>
+                </div>
+                <span className="text-gray-300 font-medium">Established (&gt;1m)</span>
               </div>
-              <span className="text-gray-300 font-medium">Established (&gt;1m)</span>
             </div>
+          </div>
+
+          {/* Display Modes */}
+          <div className="mb-4">
+            <h4 className="text-xs font-semibold text-gray-400 mb-3">Display Modes</h4>
+            <div className="flex gap-4 text-sm">
+              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
+                <svg width="16" height="16" viewBox="0 0 16 16" className="text-purple-400">
+                  <polygon points="2,2 14,2 14,14 2,14" fill="currentColor" opacity="0.7" stroke="currentColor" strokeWidth="1"/>
+                </svg>
+                <span className="text-gray-300 font-medium">Quadrangle</span>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
+                <div className="w-3 h-3 rounded-full bg-blue-400 border border-white"></div>
+                <span className="text-gray-300 font-medium">Center Point</span>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
+                <svg width="16" height="16" viewBox="0 0 16 16" className="text-orange-400">
+                  <rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2,2"/>
+                </svg>
+                <span className="text-gray-300 font-medium">Bounding Box</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Instructions */}
+          <div className="text-xs text-gray-500 text-center">
+            Click objects for detailed coordinate information • Use controls above to toggle display modes
           </div>
         </div>
       </div>
