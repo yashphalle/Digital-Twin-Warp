@@ -635,14 +635,8 @@ class CPUCompleteWarehouseTracker:
         test_color = self.color_extractor.extract_dominant_color(test_image)
         logger.info(f"🧪 Color extractor test: {test_color}")
 
-        # Database handler for MongoDB integration (same as GPU script)
-        self.db_handler = WarehouseDatabaseHandler(
-            mongodb_url="mongodb://localhost:27017/",
-            database_name="warehouse_tracking",
-            collection_name="detections",
-            batch_save_size=10,
-            enable_mongodb=True
-        )
+        # Database handler for MongoDB integration (uses Config for local/online switching)
+        self.db_handler = WarehouseDatabaseHandler()
 
         # Detection parameters (same as combined filtering)
         self.pallet_detector.confidence_threshold = 0.1

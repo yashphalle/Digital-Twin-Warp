@@ -45,10 +45,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MongoDB connection
-MONGO_URI = "mongodb://localhost:27017/"
-DATABASE_NAME = "warehouse_tracking"
-COLLECTION_NAME = "detections"  # Changed to match CV system
+# Import Config for database settings
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cv'))
+from configs.config import Config
+
+# MongoDB connection using Config
+MONGO_URI = Config.MONGO_URI  # Will use local or online based on Config.USE_LOCAL_DATABASE
+DATABASE_NAME = Config.DATABASE_NAME
+COLLECTION_NAME = Config.COLLECTION_NAME
 
 try:
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)

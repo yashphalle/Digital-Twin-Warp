@@ -6,9 +6,15 @@ Handles detection saving, batching, and database operations
 """
 
 import logging
+import sys
+import os
 from datetime import datetime
 from typing import Dict, List
 from pymongo import MongoClient
+
+# Add path for Config import
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from configs.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -305,11 +311,11 @@ class WarehouseDatabaseHandler:
             logger.info(f"💾 MongoDB: Total {self.total_saved_detections} detections saved")
             logger.info("✅ Database handler cleanup complete")
 
-# Default configuration (same as GPU script)
+# Default configuration using Config values
 DEFAULT_CONFIG = {
-    'mongodb_url': "mongodb://localhost:27017/",
-    'database_name': "warehouse_tracking", 
-    'collection_name': "detections",
+    'mongodb_url': Config.MONGO_URI,  # Will use local or online based on Config.USE_LOCAL_DATABASE
+    'database_name': Config.DATABASE_NAME,
+    'collection_name': Config.COLLECTION_NAME,
     'batch_save_size': 10,
     'enable_mongodb': True
 }

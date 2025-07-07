@@ -130,14 +130,8 @@ class CPUCompleteWarehouseTracker:
         test_color = self.color_extractor.extract_dominant_color(test_image)
         logger.info(f"🧪 Color extractor test: {test_color}")
 
-        # Database handler for MongoDB integration (same as GPU script)
-        self.db_handler = WarehouseDatabaseHandler(
-            mongodb_url="mongodb://localhost:27017/",
-            database_name="warehouse_tracking",
-            collection_name="detections",
-            batch_save_size=10,
-            enable_mongodb=True
-        )
+        # Database handler for MongoDB integration (uses Config for local/online switching)
+        self.db_handler = WarehouseDatabaseHandler()
 
         # Detection parameters (same as combined filtering)
         self.pallet_detector.confidence_threshold = 0.1
@@ -324,10 +318,10 @@ class CPUCompleteWarehouseTracker:
 # =======================================================
 
 # 🎯 DETECTION CAMERAS: Add camera numbers you want to run detection on
-ACTIVE_CAMERAS = [4]  # Cameras that will detect objects
+ACTIVE_CAMERAS = [1,2,3,4,5,6,7,8,9,10,11]  # Cameras that will detect objects
 
 # 🖥️ GUI CAMERAS: Add camera numbers you want to see windows for
-GUI_CAMERAS = [4]  # Cameras that will show GUI windows (subset of ACTIVE_CAMERAS)
+GUI_CAMERAS = []  # Cameras that will show GUI windows (subset of ACTIVE_CAMERAS)
 
 # 🎛️ GUI CONFIGURATION
 ENABLE_GUI = True  # Set to False for headless mode

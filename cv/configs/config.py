@@ -138,8 +138,18 @@ class Config:
     CROSS_CAMERA_MATCH_THRESHOLD = 0.6
     
     # ==================== DATABASE SETTINGS ====================
-    # MongoDB connection
-    MONGO_URI = "mongodb://localhost:27017/"
+    # Database mode configuration (similar to camera URLs)
+    USE_LOCAL_DATABASE = True  # Default to local database
+
+    # Local MongoDB connection
+    LOCAL_MONGO_URI = "mongodb://localhost:27017/"
+
+    # Online MongoDB connection
+    ONLINE_MONGO_URI = "mongodb+srv://yash:1234@cluster0.jmslb8o.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+
+    # Current MongoDB connection (will be set based on USE_LOCAL_DATABASE)
+    MONGO_URI = LOCAL_MONGO_URI if USE_LOCAL_DATABASE else ONLINE_MONGO_URI
+
     DATABASE_NAME = "warehouse_tracking"
     COLLECTION_NAME = "detections"  # Changed to match CV system
     
@@ -400,6 +410,20 @@ class Config:
         print("🌐 Switched to REMOTE camera URLs (104.181.138.5)")
 
     @classmethod
+    def switch_to_local_database(cls):
+        """Switch to local MongoDB database (localhost:27017)"""
+        cls.USE_LOCAL_DATABASE = True
+        cls.MONGO_URI = cls.LOCAL_MONGO_URI
+        print("🏠 Switched to LOCAL database (localhost:27017)")
+
+    @classmethod
+    def switch_to_online_database(cls):
+        """Switch to online MongoDB database (MongoDB Atlas)"""
+        cls.USE_LOCAL_DATABASE = False
+        cls.MONGO_URI = cls.ONLINE_MONGO_URI
+        print("🌐 Switched to ONLINE database (MongoDB Atlas)")
+
+    @classmethod
     def get_camera_info(cls, camera_id: int) -> dict:
         """Get camera information including current URL"""
         return {
@@ -408,6 +432,18 @@ class Config:
             'local_url': cls.LOCAL_RTSP_CAMERA_URLS.get(camera_id, ""),
             'remote_url': cls.REMOTE_RTSP_CAMERA_URLS.get(camera_id, ""),
             'using_local': cls.USE_LOCAL_CAMERAS
+        }
+
+    @classmethod
+    def get_database_info(cls) -> dict:
+        """Get database information including current connection"""
+        return {
+            'current_uri': cls.MONGO_URI,
+            'local_uri': cls.LOCAL_MONGO_URI,
+            'online_uri': cls.ONLINE_MONGO_URI,
+            'using_local': cls.USE_LOCAL_DATABASE,
+            'database_name': cls.DATABASE_NAME,
+            'collection_name': cls.COLLECTION_NAME
         }
     
     # Camera names for identification - NEW LAYOUT (3-Column, Origin Top-Right)

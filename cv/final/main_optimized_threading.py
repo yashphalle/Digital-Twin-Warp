@@ -41,6 +41,10 @@ def parse_arguments():
                        help='Use local camera URLs (192.168.x.x) instead of remote URLs')
     parser.add_argument('--remote', action='store_true',
                        help='Use remote camera URLs (104.181.138.5) instead of local URLs')
+    parser.add_argument('--local-db', action='store_true',
+                       help='Use local MongoDB database (localhost:27017)')
+    parser.add_argument('--online-db', action='store_true',
+                       help='Use online MongoDB database (MongoDB Atlas)')
     parser.add_argument('--camera', type=int, default=7,
                        help='Camera ID to use (default: 7)')
     parser.add_argument('--no-gui', action='store_true',
@@ -67,15 +71,27 @@ def main():
         Config.switch_to_remote_cameras()
     # If neither specified, use default from config (currently LOCAL)
 
+    # Configure database based on arguments
+    if args.local_db:
+        Config.switch_to_local_database()
+    elif args.online_db:
+        Config.switch_to_online_database()
+    # If neither specified, use default from config (currently LOCAL)
+
     # Show current camera configuration
     camera_info = Config.get_camera_info(args.camera)
     logger.info(f"📡 Camera URL Mode: {'LOCAL' if Config.USE_LOCAL_CAMERAS else 'REMOTE'}")
     logger.info(f"📹 Camera {args.camera} URL: {camera_info['current_url']}")
 
+    # Show current database configuration
+    database_info = Config.get_database_info()
+    logger.info(f"🗄️ Database Mode: {'LOCAL' if Config.USE_LOCAL_DATABASE else 'ONLINE'}")
+    logger.info(f"💾 Database URI: {database_info['current_uri'][:50]}..." if len(database_info['current_uri']) > 50 else f"💾 Database URI: {database_info['current_uri']}")
+
     # GUI Configuration
     ENABLE_GUI = not args.no_gui
-    ACTIVE_CAMERAS = [1,2,3,4,5,6,7,8,9,10,11]
-    GUI_CAMERAS = [4] if ENABLE_GUI else []
+    ACTIVE_CAMERAS = [7]
+    GUI_CAMERAS = [7] if ENABLE_GUI else []
 
     logger.info("🚀 OPTIMIZED WAREHOUSE THREADING SYSTEM WITH GUI")
     logger.info("=" * 80)
