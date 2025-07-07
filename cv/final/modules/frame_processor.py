@@ -150,8 +150,8 @@ class CPUFrameProcessor:
                 )
 
                 # Debug: Log color extraction after successful ID assignment
-                logger.info(f"🎨 Color extracted for object {global_id}: {color_info}")
-                logger.info(f"🔍 Detection data after color update: {list(detection.keys())}")
+                # logger.info(f"🎨 Color extracted for object {global_id}: {color_info}")
+                # logger.info(f"🔍 Detection data after color update: {list(detection.keys())}")
 
                 # Update counters
                 if status == 'new':
@@ -217,9 +217,13 @@ class CPUFrameProcessor:
             self.size_filtered_detections = self.filtering.apply_physical_size_filter(self.grid_filtered_detections)
 
             # Stage 6: CPU SIFT feature matching and global ID assignment
+            # TEMPORARILY COMMENTED OUT FOR TESTING - Stage 6 & 7
             self.final_tracked_detections = self.assign_global_ids(self.size_filtered_detections, processed_frame)
 
-            # Stage 7: Save detections to database
+            # For testing: Use size_filtered_detections directly without SIFT matching
+            # self.final_tracked_detections = self.size_filtered_detections
+
+            # Stage 7: Save detections to database - COMMENTED OUT FOR TESTING
             if self.db_handler and self.db_handler.is_connected():
                 for detection in self.final_tracked_detections:
                     self.db_handler.save_detection_to_db(self.camera_id, detection)

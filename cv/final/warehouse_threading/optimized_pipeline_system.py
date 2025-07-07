@@ -10,6 +10,7 @@ import time
 import signal
 import sys
 import threading
+import cv2
 from typing import List
 
 # Import optimized components
@@ -21,20 +22,36 @@ logger = logging.getLogger(__name__)
 
 class OptimizedPipelineSystem:
     """
-    Optimized Pipeline Threading System
+    Optimized Pipeline Threading System with GUI Support
     Uses SAME modules and functionality as original
-    ONLY CHANGE: Optimized camera threading and queue management
+    ONLY CHANGE: Optimized camera threading and queue management + GUI display
     """
-    
-    def __init__(self, active_cameras: List[int] = [1, 2]):
+
+    def __init__(self, active_cameras: List[int] = [1, 2], enable_gui: bool = False, gui_cameras: List[int] = None):
         self.active_cameras = active_cameras
+        self.enable_gui = enable_gui
+        self.gui_cameras = gui_cameras or []
         self.running = False
-        
+
         # Initialize OPTIMIZED threading components
         self.queue_manager = OptimizedQueueManager(max_cameras=len(active_cameras))
         self.camera_manager = OptimizedCameraThreadManager(active_cameras, self.queue_manager)
-        self.detection_pool = DetectionThreadPool(num_workers=6, queue_manager=self.queue_manager)  # INCREASED for better GPU utilization
-        
+        self.detection_pool = DetectionThreadPool(num_workers=3, queue_manager=self.queue_manager)  # OPTIMIZED: 2 workers for better GPU utilization
+
+        # Initialize GUI display managers if enabled
+        self.display_managers = {}
+        if self.enable_gui:
+            logger.info(f"[GUI] Initializing display managers for cameras: {self.gui_cameras}")
+            try:
+                from modules.gui_display import CPUDisplayManager
+                for cam_id in self.gui_cameras:
+                    camera_name = f"Camera {cam_id}"
+                    self.display_managers[cam_id] = CPUDisplayManager(cam_id, camera_name)
+                    logger.info(f"[GUI] Display manager initialized for {camera_name}")
+            except Exception as e:
+                logger.error(f"[GUI] Failed to initialize display managers: {e}")
+                self.enable_gui = False
+
         # Performance monitoring
         self.performance_stats = {
             'start_time': None,
@@ -114,9 +131,17 @@ class OptimizedPipelineSystem:
         """Stop the optimized threading system"""
         if not self.running:
             return
-        
+
         logger.info("[STOP] Stopping OPTIMIZED Pipeline Threading System...")
         self.running = False
+
+        # Close GUI windows if enabled
+        if self.enable_gui:
+            try:
+                cv2.destroyAllWindows()
+                logger.info("[GUI] All GUI windows closed")
+            except Exception as e:
+                logger.error(f"[GUI] Error closing windows: {e}")
 
         # Stop components in reverse order
         if hasattr(self, 'detection_pool'):
@@ -157,10 +182,11 @@ class OptimizedPipelineSystem:
                 coord_converter = CoordinateMapper(camera_id=camera_id)
                 coord_converter.load_calibration()
                 color_extractor = ObjectColorExtractor()
-                global_db = CPUGlobalFeatureDatabase(f"camera_{camera_id}_features.pkl")
+                global_db = CPUGlobalFeatureDatabase(f"cpu_camera_{camera_id}_global_features.pkl", camera_id)
                 db_handler = WarehouseDatabaseHandler()
                 
-                # Inject components into frame processor (SAME as original)
+                # Inject components into frame processor (SAME as original + GUI support)
+                display_manager = self.display_managers.get(camera_id) if self.enable_gui else None
                 frame_processor.inject_components(
                     fisheye_corrector=None,  # Already done in camera thread
                     pallet_detector=None,    # Already done in detection thread
@@ -170,7 +196,7 @@ class OptimizedPipelineSystem:
                     global_db=global_db,
                     color_extractor=color_extractor,
                     db_handler=db_handler,
-                    display_manager=None     # Using web GUI instead
+                    display_manager=display_manager  # GUI display manager if enabled
                 )
 
                 processors[camera_id] = frame_processor
@@ -194,8 +220,41 @@ class OptimizedPipelineSystem:
                 camera_id = frame_data.camera_id
                 frame = frame_data.frame
 
+                # Always show GUI even if no detections (FIXED: GUI was not showing when no objects detected)
                 if not raw_detections:
                     logger.debug(f"[DETECTION] Camera {camera_id}: No detections found")
+                    # Still show GUI with empty frame
+                    if self.enable_gui and camera_id in self.gui_cameras:
+                        try:
+                            display_manager = self.display_managers[camera_id]
+
+                            # Create mock tracker with empty detections
+                            mock_tracker = type('MockTracker', (), {
+                                'frame_processor': type('MockFrameProcessor', (), {
+                                    'final_tracked_detections': [],
+                                    'get_detection_counts': lambda self: {'total': 0, 'new': 0, 'tracked': 0},
+                                    'raw_detections': [],
+                                    'filtered_detections': [],
+                                    'grid_filtered_detections': []
+                                })(),
+                                'camera_id': camera_id,
+                                'camera_name': f"Camera {camera_id}"
+                            })()
+
+                            # Show GUI window with empty detections
+                            display_frame = display_manager.render_frame(frame, mock_tracker)
+                            window_name = f"CPU Tracking - Camera {camera_id}"
+                            cv2.imshow(window_name, display_frame)
+
+                            # Handle keyboard input
+                            key = cv2.waitKey(1) & 0xFF
+                            if key == ord('q'):
+                                logger.info("[GUI] 'q' key pressed - shutting down system")
+                                self.stop()
+                                break
+
+                        except Exception as e:
+                            logger.error(f"[GUI] Display error for Camera {camera_id}: {e}")
                     continue
 
                 # Get processor for this camera (SAME as original)
@@ -236,6 +295,39 @@ class OptimizedPipelineSystem:
 
                     processed_count += 1
                     self.performance_stats['frames_processed'] = processed_count
+
+                    # GUI Display (SAME as main.py)
+                    if self.enable_gui and camera_id in self.gui_cameras:
+                        try:
+                            display_manager = self.display_managers[camera_id]
+
+                            # Create mock tracker object for display (same structure as main.py)
+                            mock_tracker = type('MockTracker', (), {
+                                'frame_processor': processor,
+                                'camera_id': camera_id,
+                                'camera_name': f"Camera {camera_id}"
+                            })()
+
+                            # Render frame with detections and overlay
+                            display_frame = display_manager.render_frame(frame, mock_tracker)
+
+                            # Show GUI window
+                            window_name = f"CPU Tracking - Camera {camera_id}"
+                            cv2.imshow(window_name, display_frame)
+
+                            # Handle keyboard input (same as main.py)
+                            key = cv2.waitKey(1) & 0xFF
+                            if key == ord('q'):
+                                logger.info("[GUI] 'q' key pressed - shutting down system")
+                                self.stop()
+                                break
+                            elif key == ord('n'):
+                                logger.info("[GUI] 'n' key pressed - next detection prompt")
+                            elif key == ord('p'):
+                                logger.info("[GUI] 'p' key pressed - previous detection prompt")
+
+                        except Exception as e:
+                            logger.error(f"[GUI] Display error for Camera {camera_id}: {e}")
 
                     # Log results using existing method (SAME as original)
                     counts = processor.get_detection_counts()

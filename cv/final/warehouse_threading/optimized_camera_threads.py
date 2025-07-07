@@ -54,7 +54,7 @@ class OptimizedCameraThreadManager(CameraThreadManager):
         frame_number = 0
         processed_frames = 0
         skipped_frames = 0
-        FRAME_SKIP = 40  # Process every 40th frame (INCREASED for 6 GPU workers)
+        FRAME_SKIP = 20  # Process every 20th frame (SAME AS main.py for comparison)
 
         while self.running:
             try:

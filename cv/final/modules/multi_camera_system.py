@@ -7,6 +7,7 @@ Extracted from main.py for modular architecture
 
 import cv2
 import logging
+import time
 from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,11 @@ class MultiCameraCPUSystem:
         self.frame_count = 0
         self.processed_frame_count = 0
         self.frame_skip = 20  # Process every 20th frame
+
+        # Simple FPS tracking
+        self.fps_start_time = time.time()
+        self.fps_frame_count = 0
+        self.current_fps = 0.0
         
         logger.info("🎛️ Multi-Camera CPU System Configuration:")
         logger.info(f"📹 Active Cameras: {self.active_cameras}")
@@ -125,7 +131,8 @@ class MultiCameraCPUSystem:
             'total_db_saved': total_db_saved,
             'connected_cameras': len(self.trackers),
             'active_cameras': len(self.active_cameras),
-            'camera_stats': camera_stats
+            'camera_stats': camera_stats,
+            'fps': self.current_fps
         }
 
     def handle_keyboard_input(self) -> bool:
@@ -185,6 +192,19 @@ class MultiCameraCPUSystem:
 
                 if should_process:
                     self.processed_frame_count += 1
+                    self.fps_frame_count += 1
+
+                    # Calculate FPS every 5 seconds
+                    current_time = time.time()
+                    elapsed_time = current_time - self.fps_start_time
+
+                    if elapsed_time >= 5.0:  # Every 5 seconds
+                        self.current_fps = self.fps_frame_count / elapsed_time
+                        logger.info(f"FPS: {self.current_fps:.2f}")
+
+                        # Reset for next calculation
+                        self.fps_start_time = current_time
+                        self.fps_frame_count = 0
 
                 # Handle keyboard input
                 if not self.handle_keyboard_input():

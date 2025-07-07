@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import logging
 import torch
+import time
 from typing import List, Dict
 
 logger = logging.getLogger(__name__)
@@ -94,12 +95,21 @@ class CPUSimplePalletDetector:
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
             # GPU/CPU inference with automatic mixed precision if GPU available
+            # Start precise Grounding DINO timing
+            grounding_dino_start = time.time()
+
             if self.device.type == 'cuda':
                 with torch.no_grad(), torch.amp.autocast('cuda'):
                     outputs = self.model(**inputs)
             else:
                 with torch.no_grad():
                     outputs = self.model(**inputs)
+
+            # End precise Grounding DINO timing
+            grounding_dino_end = time.time()
+            grounding_dino_time = grounding_dino_end - grounding_dino_start
+            grounding_dino_fps = 1.0 / grounding_dino_time
+            logger.info(f"🎯 Grounding DINO FPS: {grounding_dino_fps:.2f} (Time: {grounding_dino_time:.3f}s)")
             
             # Process results using SAME METHOD as combined filtering
             results = self.processor.post_process_grounded_object_detection(

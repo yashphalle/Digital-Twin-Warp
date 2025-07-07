@@ -331,8 +331,33 @@ class Config:
         # Fallback for Phase 1
         ACTIVE_CAMERAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # ALL CAMERAS
     
-    # Lorex RTSP Camera URLs (11 cameras total) - UPDATED FROM DEVICE LIST
-    RTSP_CAMERA_URLS = {
+    # ==================== RTSP URL CONFIGURATION ====================
+
+    # Flag to switch between LOCAL and REMOTE camera URLs
+    USE_LOCAL_CAMERAS = False  # Set to True for local URLs (192.168.x.x), False for remote URLs (104.181.138.5)
+
+    # LOCAL RTSP Camera URLs (192.168.x.x network) - UPDATED FROM ACTUAL CAMERA LIST
+    LOCAL_RTSP_CAMERA_URLS = {
+        # Updated with actual camera IPs from camera management system
+        1: "rtsp://admin:wearewarp!@192.168.0.81:8000/Streaming/channels/1",   # Cam 1 Front
+        2: "rtsp://admin:wearewarp!@192.168.0.85:8000/Streaming/channels/1",   # Cam 2 Front
+        3: "rtsp://admin:wearewarp!@192.168.0.83:8000/Streaming/channels/1",   # Cam 3 Front
+        4: "rtsp://admin:wearewarp!@192.168.0.84:8000/Streaming/channels/1",   # Cam 4 Front
+
+        # Row 2 (Middle) - 3 cameras
+        5: "rtsp://admin:wearewarp!@192.168.0.77:8000/Streaming/channels/1",   # Cam 5 Mid
+        6: "rtsp://admin:wearewarp!@192.168.0.106:8000/Streaming/channels/1",  # Cam 6 Mid
+        7: "rtsp://admin:wearewarp!@192.168.0.78:8000/Streaming/channels/1",   # Cam 7 Mid
+
+        # Row 3 (Back) - 4 cameras
+        8: "rtsp://admin:wearewarp!@192.168.0.79:8000/Streaming/channels/1",   # Cam 8 Back
+        9: "rtsp://admin:wearewarp!@192.168.0.80:8000/Streaming/channels/1",   # Cam 9 Back
+        10: "rtsp://admin:wearewarp!@192.168.0.82:8000/Streaming/channels/1",  # Cam 10 Back
+        11: "rtsp://admin:wearewarp!@192.168.0.64:8000/Streaming/channels/1"   # Cam 11 Back
+    }
+
+    # REMOTE RTSP Camera URLs (104.181.138.5 network)
+    REMOTE_RTSP_CAMERA_URLS = {
         # Row 1 (Front) - 4 cameras
         1: "rtsp://admin:wearewarp!@104.181.138.5:5561/Streaming/channels/1",  # Cam 1 REMOTE
         2: "rtsp://admin:wearewarp!@104.181.138.5:5562/Streaming/channels/1",  # Cam 2 REMOTE
@@ -340,17 +365,50 @@ class Config:
         4: "rtsp://admin:wearewarp!@104.181.138.5:5564/Streaming/channels/1",  # Cam 4 REMOTE
 
         # Row 2 (Middle) - 3 cameras
-        # 5: "rtsp://admin:wearewarp!@192.168.0.77:555/Streaming/channels/1",  # Cam 5 Mid Right ✅ LOCAL (port corrected)
         5: "rtsp://admin:wearewarp!@104.181.138.5:5565/Streaming/channels/1",  # Cam 5 REMOTE
         6: "rtsp://admin:wearewarp!@104.181.138.5:5566/Streaming/channels/1",  # Cam 6 REMOTE
         7: "rtsp://admin:wearewarp!@104.181.138.5:5567/Streaming/channels/1",  # Cam 7 REMOTE
 
-        # Row 3 (Back) - 4 cameras - These are at the FAR END of warehouse
+        # Row 3 (Back) - 4 cameras
         8: "rtsp://admin:wearewarp!@104.181.138.5:5568/Streaming/channels/1",  # Cam 8 REMOTE
         9: "rtsp://admin:wearewarp!@104.181.138.5:5569/Streaming/channels/1",  # Cam 9 REMOTE
         10: "rtsp://admin:wearewarp!@104.181.138.5:55610/Streaming/channels/1", # Cam 10 REMOTE
         11: "rtsp://admin:wearewarp!@104.181.138.5:55611/Streaming/channels/1"  # Cam 11 REMOTE
     }
+
+    # Active RTSP URLs (automatically selected based on USE_LOCAL_CAMERAS flag)
+    RTSP_CAMERA_URLS = LOCAL_RTSP_CAMERA_URLS if USE_LOCAL_CAMERAS else REMOTE_RTSP_CAMERA_URLS
+
+    @classmethod
+    def get_camera_url(cls, camera_id: int) -> str:
+        """Get RTSP URL for specific camera based on current configuration"""
+        urls = cls.LOCAL_RTSP_CAMERA_URLS if cls.USE_LOCAL_CAMERAS else cls.REMOTE_RTSP_CAMERA_URLS
+        return urls.get(camera_id, "")
+
+    @classmethod
+    def switch_to_local_cameras(cls):
+        """Switch to local camera URLs (192.168.x.x)"""
+        cls.USE_LOCAL_CAMERAS = True
+        cls.RTSP_CAMERA_URLS = cls.LOCAL_RTSP_CAMERA_URLS
+        print("🏠 Switched to LOCAL camera URLs (192.168.x.x)")
+
+    @classmethod
+    def switch_to_remote_cameras(cls):
+        """Switch to remote camera URLs (104.181.138.5)"""
+        cls.USE_LOCAL_CAMERAS = False
+        cls.RTSP_CAMERA_URLS = cls.REMOTE_RTSP_CAMERA_URLS
+        print("🌐 Switched to REMOTE camera URLs (104.181.138.5)")
+
+    @classmethod
+    def get_camera_info(cls, camera_id: int) -> dict:
+        """Get camera information including current URL"""
+        return {
+            'camera_id': camera_id,
+            'current_url': cls.get_camera_url(camera_id),
+            'local_url': cls.LOCAL_RTSP_CAMERA_URLS.get(camera_id, ""),
+            'remote_url': cls.REMOTE_RTSP_CAMERA_URLS.get(camera_id, ""),
+            'using_local': cls.USE_LOCAL_CAMERAS
+        }
     
     # Camera names for identification - NEW LAYOUT (3-Column, Origin Top-Right)
     CAMERA_NAMES = {

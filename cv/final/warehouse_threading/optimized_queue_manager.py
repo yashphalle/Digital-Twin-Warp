@@ -26,19 +26,19 @@ class OptimizedQueueManager(QueueManager):
     def __init__(self, max_cameras: int = 11):
         self.max_cameras = max_cameras
         
-        # OPTIMIZED queue sizes for better GPU utilization
+        # OPTIMIZED queue sizes with frame replacement strategy
         self.queues = {
-            # Camera → Detection (INCREASED for 6 GPU workers)
-            'camera_to_detection': queue.Queue(maxsize=max_cameras * 6),  # Increased for 6 workers
+            # Camera → Detection (SMALLER with frame replacement for real-time processing)
+            'camera_to_detection': queue.Queue(maxsize=max_cameras * 5),  # 5 frames max - newer frames replace older
 
-            # Detection → Processing (INCREASED for smoother flow)
-            'detection_to_processing': queue.Queue(maxsize=max_cameras * 6),  # Increased for 6 workers
-            
+            # Detection → Processing (SMALLER with frame replacement)
+            'detection_to_processing': queue.Queue(maxsize=max_cameras * 5),  # 5 frames max - newer frames replace older
+
             # Processing → Database (SAME as original)
             'processing_to_database': queue.Queue(maxsize=max_cameras * 1),
-            
-            # Processing → GUI (SAME as original)
-            'processing_to_gui': queue.Queue(maxsize=6),
+
+            # Processing → GUI (SMALLER for real-time display)
+            'processing_to_gui': queue.Queue(maxsize=5),
         }
         
         # Enhanced statistics tracking
@@ -62,11 +62,27 @@ class OptimizedQueueManager(QueueManager):
     
     def put_frame(self, queue_name: str, frame_data: FrameData, timeout: float = 1.0) -> bool:
         """
-        Enhanced frame queuing with optimization metrics
-        SAME functionality as original, ENHANCED monitoring
+        Enhanced frame queuing with NEWEST FRAME REPLACEMENT
+        If queue is full, removes oldest frame and adds newest frame
         """
         try:
             start_time = time.time()
+
+            # NEW FEATURE: Replace oldest frame with newest when queue is full
+            if self.queues[queue_name].full():
+                try:
+                    # Remove oldest frame (FIFO - get removes from front)
+                    old_frame = self.queues[queue_name].get_nowait()
+                    logger.debug(f"[QUEUE] Replaced old frame in {queue_name} with newer frame")
+
+                    # Track frame replacements for monitoring
+                    with self._stats_lock:
+                        self.stats['frames_replaced'] = self.stats.get('frames_replaced', 0) + 1
+
+                except queue.Empty:
+                    pass  # Queue became empty between full() check and get_nowait()
+
+            # Add the new frame (will not block since we made space if needed)
             self.queues[queue_name].put(frame_data, timeout=timeout)
             put_time = time.time() - start_time
             
@@ -179,3 +195,4 @@ class OptimizedQueueManager(QueueManager):
         logger.info(f"   Avg Queue Utilization: {opt_stats.get('avg_queue_utilization', 'N/A')}")
         logger.info(f"   Bottleneck Detected: {opt_stats.get('bottleneck_detected', 'none')}")
         logger.info(f"   Total Overflows: {opt_stats.get('total_overflows', 0)}")
+        logger.info(f"   Frames Replaced: {self.stats.get('frames_replaced', 0)} (newer frames replacing older)")

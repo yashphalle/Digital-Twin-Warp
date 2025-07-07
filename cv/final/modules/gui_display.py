@@ -131,6 +131,11 @@ class CPUDisplayManager:
         y_offset += 25
         cv2.putText(frame, f"Camera: {self.camera_name}", (20, y_offset), self.font, 0.5, color, 1)
 
+        # FPS display
+        y_offset += 20
+        fps = stats.get('fps', 0.0)
+        cv2.putText(frame, f"FPS: {fps:.2f}", (20, y_offset), self.font, 0.6, self.text_colors['green'], 2)
+
         # Frame statistics
         y_offset += 20
         frame_count = stats.get('frame_count', 0)
