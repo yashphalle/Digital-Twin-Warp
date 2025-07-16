@@ -382,21 +382,21 @@ class Config:
     # REMOTE RTSP Camera URLs (104.181.138.5 network)
     REMOTE_RTSP_CAMERA_URLS = {
         # Row 1 (Front) - 4 cameras
-        1: "rtsp://admin:wearewarp!@104.181.138.5:5561/Streaming/channels/1",  # Cam 1 REMOTE
-        2: "rtsp://admin:wearewarp!@104.181.138.5:5562/Streaming/channels/1",  # Cam 2 REMOTE
-        3: "rtsp://admin:wearewarp!@104.181.138.5:5563/Streaming/channels/1",  # Cam 3 REMOTE
-        4: "rtsp://admin:wearewarp!@104.181.138.5:5564/Streaming/channels/1",  # Cam 4 REMOTE
+        1: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/201",  # Cam 1 REMOTE
+        2: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/201",  # Cam 2 REMOTE
+        3: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/301",  # Cam 3 REMOTE
+        4: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/401",  # Cam 4 REMOTE
 
         # Row 2 (Middle) - 3 cameras
-        5: "rtsp://admin:wearewarp!@104.181.138.5:5565/Streaming/channels/1",  # Cam 5 REMOTE
-        6: "rtsp://admin:wearewarp!@104.181.138.5:5566/Streaming/channels/1",  # Cam 6 REMOTE
-        7: "rtsp://admin:wearewarp!@104.181.138.5:5567/Streaming/channels/1",  # Cam 7 REMOTE
+        5: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/501",  # Cam 5 REMOTE
+        6: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/601",  # Cam 6 REMOTE
+        7: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/701",  # Cam 7 REMOTE
 
         # Row 3 (Back) - 4 cameras
-        8: "rtsp://admin:wearewarp!@104.181.138.5:5568/Streaming/channels/1",  # Cam 8 REMOTE
-        9: "rtsp://admin:wearewarp!@104.181.138.5:5569/Streaming/channels/1",  # Cam 9 REMOTE
-        10: "rtsp://admin:wearewarp!@104.181.138.5:55610/Streaming/channels/1", # Cam 10 REMOTE
-        11: "rtsp://admin:wearewarp!@104.181.138.5:55611/Streaming/channels/1"  # Cam 11 REMOTE
+        8: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/801",  # Cam 8 REMOTE
+        9: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/901",  # Cam 9 REMOTE
+        10: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/1001", # Cam 10 REMOTE
+        11: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/1101"  # Cam 11 REMOTE
     }
 
     # Active RTSP URLs (automatically selected based on USE_LOCAL_CAMERAS flag)
