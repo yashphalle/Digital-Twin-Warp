@@ -282,6 +282,19 @@ class Config:
     SHOW_INFO_OVERLAY = True
     INFO_OVERLAY_HEIGHT = 180
     
+    # ==================== TRAINING DATA COLLECTION SETTINGS ====================
+    # Training data collection paths
+    TRAINING_DATA_ROOT = "training/data"
+    RAW_COLLECTION_DIR = "training/data/raw_collection"
+    PROCESSED_TRAINING_DIR = "training/data/processed"
+
+    # Training data quality settings
+    RAW_IMAGE_QUALITY = 95      # JPEG quality for raw 4K images
+    CORRECTED_IMAGE_QUALITY = 90 # JPEG quality for corrected 2K images
+
+    # Collection timing
+    COLLECTION_FRAME_SKIP = 1200  # Frames to skip between saves (1 min at 20fps)
+
     # ==================== LOGGING SETTINGS ====================
     # Log levels
     LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
