@@ -90,7 +90,7 @@ def main():
 
     # GUI Configuration
     ENABLE_GUI = not args.no_gui
-    ACTIVE_CAMERAS = [1,2,3,4,5,6,7,8,9,10,11]
+    ACTIVE_CAMERAS = [7]
     GUI_CAMERAS = [7] if ENABLE_GUI else []
 
     logger.info("🚀 OPTIMIZED WAREHOUSE THREADING SYSTEM WITH GUI")

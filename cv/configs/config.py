@@ -139,19 +139,19 @@ class Config:
     
     # ==================== DATABASE SETTINGS ====================
     # Database mode configuration (similar to camera URLs)
-    USE_LOCAL_DATABASE = True  # Default to local database
+    USE_LOCAL_DATABASE = False  # Switch to online WARP database
 
     # Local MongoDB connection
     LOCAL_MONGO_URI = "mongodb://localhost:27017/"
 
-    # Online MongoDB connection
-    ONLINE_MONGO_URI = "mongodb+srv://yash:1234@cluster0.jmslb8o.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+    # Online MongoDB connection - WARP Database
+    ONLINE_MONGO_URI = "mongodb+srv://yash:1234@cluster0.jmslb8o.mongodb.net/WARP?retryWrites=true&w=majority"
 
     # Current MongoDB connection (will be set based on USE_LOCAL_DATABASE)
     MONGO_URI = LOCAL_MONGO_URI if USE_LOCAL_DATABASE else ONLINE_MONGO_URI
 
-    DATABASE_NAME = "warehouse_tracking"
-    COLLECTION_NAME = "detections"  # Changed to match CV system
+    DATABASE_NAME = "WARP"
+    COLLECTION_NAME = "detections"
     
     # Database behavior
     AUTO_CREATE_INDEXES = True

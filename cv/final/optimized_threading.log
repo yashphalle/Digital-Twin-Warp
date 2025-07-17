@@ -1,139 +1,170 @@
-2025-07-05 11:04:30,076 - __main__ - INFO - ============================================================
-2025-07-05 11:04:30,081 - __main__ - INFO - ============================================================
-2025-07-05 11:04:30,086 - __main__ - INFO - ============================================================
-2025-07-05 11:04:30,091 - warehouse_config - INFO - Warehouse configuration loaded: WARP Main Warehouse
-2025-07-05 11:04:41,351 - warehouse_threading.optimized_pipeline_system - INFO -    - Smart frame skipping BEFORE processing (95% CPU savings)
-2025-07-05 11:04:41,351 - warehouse_threading.optimized_pipeline_system - INFO -    - Enhanced queue management for GPU feeding
-2025-07-05 11:04:41,353 - warehouse_threading.optimized_pipeline_system - INFO -    - SAME tested modules: detection, filtering, coordinates, database
-2025-07-05 11:04:41,717 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 11:04:41,722 - modules.coordinate_mapper - INFO - Camera ID: 1
-2025-07-05 11:04:41,728 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_1.json
-2025-07-05 11:04:41,741 - modules.feature_database - INFO - Loaded 33 objects from CPU database
-2025-07-05 11:04:41,758 - modules.feature_database - INFO - CPU feature database initialized with 33 objects
-2025-07-05 11:04:41,837 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 11:04:41,840 - modules.coordinate_mapper - INFO - Camera ID: 2
-2025-07-05 11:04:41,844 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_2.json
-2025-07-05 11:04:41,856 - modules.feature_database - INFO - Loaded 18 objects from CPU database
-2025-07-05 11:04:41,869 - modules.feature_database - INFO - CPU feature database initialized with 18 objects
-2025-07-05 11:04:41,926 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 11:04:41,930 - modules.coordinate_mapper - INFO - Camera ID: 3
-2025-07-05 11:04:41,935 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_3.json
-2025-07-05 11:04:41,945 - modules.feature_database - INFO - Loaded 26 objects from CPU database
-2025-07-05 11:04:41,959 - modules.feature_database - INFO - CPU feature database initialized with 26 objects
-2025-07-05 11:04:42,036 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 11:04:42,042 - modules.coordinate_mapper - INFO - Camera ID: 4
-2025-07-05 11:04:42,049 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_4.json
-2025-07-05 11:04:42,063 - modules.feature_database - INFO - Loaded 12 objects from CPU database
-2025-07-05 11:04:42,083 - modules.feature_database - INFO - CPU feature database initialized with 12 objects
-2025-07-05 11:05:11,424 - warehouse_threading.optimized_pipeline_system - INFO -    Expected CPU Savings: 95%
-2025-07-05 11:05:11,429 - warehouse_threading.optimized_pipeline_system - INFO -    GPU Feed Efficiency: 0.00
-2025-07-05 11:05:11,434 - warehouse_threading.optimized_pipeline_system - INFO -    Frames Processed: 0
-2025-07-05 11:05:11,445 - warehouse_threading.optimized_queue_manager - INFO -    GPU Feed Efficiency: 0.00
-2025-07-05 11:05:11,450 - warehouse_threading.optimized_queue_manager - INFO -    Avg Queue Utilization: 0.00
-2025-07-05 11:05:11,455 - warehouse_threading.optimized_queue_manager - INFO -    Bottleneck Detected: none
-2025-07-05 11:05:11,459 - warehouse_threading.optimized_queue_manager - INFO -    Total Overflows: 0
-2025-07-05 11:06:17,197 - __main__ - INFO - ============================================================
-2025-07-05 11:06:17,202 - __main__ - INFO - ============================================================
-2025-07-05 11:06:17,207 - __main__ - INFO - ============================================================
-2025-07-05 11:06:17,211 - warehouse_config - INFO - Warehouse configuration loaded: WARP Main Warehouse
-2025-07-05 12:51:03,755 - __main__ - INFO - STARTING OPTIMIZED WAREHOUSE THREADING SYSTEM
-2025-07-05 12:51:03,757 - __main__ - INFO - ============================================================
-2025-07-05 12:51:03,757 - __main__ - INFO - KEY OPTIMIZATIONS:
-2025-07-05 12:51:03,757 - __main__ - INFO -    [OK] Smart frame skipping BEFORE processing (95% CPU savings)
-2025-07-05 12:51:03,757 - __main__ - INFO -    [OK] Enhanced queue management for GPU feeding
-2025-07-05 12:51:03,757 - __main__ - INFO -    [OK] SAME tested modules: detection, filtering, coordinates, database
-2025-07-05 12:51:03,757 - __main__ - INFO -    [OK] Zero changes to existing functionality
-2025-07-05 12:51:03,758 - __main__ - INFO - ============================================================
-2025-07-05 12:51:03,758 - __main__ - INFO - PERFORMANCE MONITORING INSTRUCTIONS:
-2025-07-05 12:51:03,758 - __main__ - INFO -    [1] Open Task Manager / System Monitor
-2025-07-05 12:51:03,758 - __main__ - INFO -    [2] Watch CPU usage - should drop from 100% to ~20-30%
-2025-07-05 12:51:03,758 - __main__ - INFO -    [3] Watch GPU usage - should increase from 20% to 80-90%
-2025-07-05 12:51:03,758 - __main__ - INFO -    [4] Watch Memory usage - should be more stable
-2025-07-05 12:51:03,758 - __main__ - INFO -    [5] Monitor for ~2-3 minutes to see the difference
-2025-07-05 12:51:03,758 - __main__ - INFO - ============================================================
-2025-07-05 12:51:03,758 - __main__ - INFO - [INIT] Initializing optimized system for cameras: [1, 2, 3, 4]
-2025-07-05 12:51:03,763 - warehouse_config - INFO - Warehouse configuration loaded: WARP Main Warehouse
-2025-07-05 12:51:14,298 - warehouse_threading.optimized_pipeline_system - INFO -    - Smart frame skipping BEFORE processing (95% CPU savings)
-2025-07-05 12:51:14,298 - warehouse_threading.optimized_pipeline_system - INFO -    - Enhanced queue management for GPU feeding
-2025-07-05 12:51:14,299 - warehouse_threading.optimized_pipeline_system - INFO -    - SAME tested modules: detection, filtering, coordinates, database
-2025-07-05 12:51:14,299 - __main__ - INFO - [START] Starting optimized threading system...
-2025-07-05 12:51:14,299 - __main__ - INFO - [INFO] System will run until Ctrl+C is pressed
-2025-07-05 12:51:14,299 - __main__ - INFO - [MONITOR] Performance stats will be logged every 30 seconds
-2025-07-05 12:51:14,554 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:51:14,558 - modules.coordinate_mapper - INFO - Camera ID: 1
-2025-07-05 12:51:14,563 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_1.json
-2025-07-05 12:51:14,572 - modules.feature_database - INFO - Loaded 33 objects from CPU database
-2025-07-05 12:51:14,586 - modules.feature_database - INFO - CPU feature database initialized with 33 objects
-2025-07-05 12:51:14,643 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:51:14,648 - modules.coordinate_mapper - INFO - Camera ID: 2
-2025-07-05 12:51:14,651 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_2.json
-2025-07-05 12:51:14,660 - modules.feature_database - INFO - Loaded 18 objects from CPU database
-2025-07-05 12:51:14,672 - modules.feature_database - INFO - CPU feature database initialized with 18 objects
-2025-07-05 12:51:14,726 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:51:14,730 - modules.coordinate_mapper - INFO - Camera ID: 3
-2025-07-05 12:51:14,734 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_3.json
-2025-07-05 12:51:14,743 - modules.feature_database - INFO - Loaded 26 objects from CPU database
-2025-07-05 12:51:14,755 - modules.feature_database - INFO - CPU feature database initialized with 26 objects
-2025-07-05 12:51:14,813 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:51:14,818 - modules.coordinate_mapper - INFO - Camera ID: 4
-2025-07-05 12:51:14,826 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_4.json
-2025-07-05 12:51:14,835 - modules.feature_database - INFO - Loaded 12 objects from CPU database
-2025-07-05 12:51:14,850 - modules.feature_database - INFO - CPU feature database initialized with 12 objects
-2025-07-05 12:51:44,360 - warehouse_threading.optimized_pipeline_system - INFO -    Expected CPU Savings: 95%
-2025-07-05 12:51:44,365 - warehouse_threading.optimized_pipeline_system - INFO -    GPU Feed Efficiency: 0.00
-2025-07-05 12:51:44,368 - warehouse_threading.optimized_pipeline_system - INFO -    Frames Processed: 0
-2025-07-05 12:51:44,378 - warehouse_threading.optimized_queue_manager - INFO -    GPU Feed Efficiency: 0.00
-2025-07-05 12:51:44,382 - warehouse_threading.optimized_queue_manager - INFO -    Avg Queue Utilization: 0.00
-2025-07-05 12:51:44,385 - warehouse_threading.optimized_queue_manager - INFO -    Bottleneck Detected: none
-2025-07-05 12:51:44,389 - warehouse_threading.optimized_queue_manager - INFO -    Total Overflows: 0
-2025-07-05 12:53:23,085 - __main__ - INFO - STARTING OPTIMIZED WAREHOUSE THREADING SYSTEM
-2025-07-05 12:53:23,085 - __main__ - INFO - ============================================================
-2025-07-05 12:53:23,085 - __main__ - INFO - KEY OPTIMIZATIONS:
-2025-07-05 12:53:23,085 - __main__ - INFO -    [OK] Smart frame skipping BEFORE processing (95% CPU savings)
-2025-07-05 12:53:23,085 - __main__ - INFO -    [OK] Enhanced queue management for GPU feeding
-2025-07-05 12:53:23,085 - __main__ - INFO -    [OK] SAME tested modules: detection, filtering, coordinates, database
-2025-07-05 12:53:23,085 - __main__ - INFO -    [OK] Zero changes to existing functionality
-2025-07-05 12:53:23,085 - __main__ - INFO - ============================================================
-2025-07-05 12:53:23,085 - __main__ - INFO - PERFORMANCE MONITORING INSTRUCTIONS:
-2025-07-05 12:53:23,085 - __main__ - INFO -    [1] Open Task Manager / System Monitor
-2025-07-05 12:53:23,085 - __main__ - INFO -    [2] Watch CPU usage - should drop from 100% to ~20-30%
-2025-07-05 12:53:23,087 - __main__ - INFO -    [3] Watch GPU usage - should increase from 20% to 80-90%
-2025-07-05 12:53:23,087 - __main__ - INFO -    [4] Watch Memory usage - should be more stable
-2025-07-05 12:53:23,087 - __main__ - INFO -    [5] Monitor for ~2-3 minutes to see the difference
-2025-07-05 12:53:23,087 - __main__ - INFO - ============================================================
-2025-07-05 12:53:23,087 - __main__ - INFO - [INIT] Initializing optimized system for cameras: [1, 2, 3, 4]
-2025-07-05 12:53:23,092 - warehouse_config - INFO - Warehouse configuration loaded: WARP Main Warehouse
-2025-07-05 12:53:33,992 - warehouse_threading.optimized_pipeline_system - INFO -    - Smart frame skipping BEFORE processing (95% CPU savings)
-2025-07-05 12:53:33,992 - warehouse_threading.optimized_pipeline_system - INFO -    - Enhanced queue management for GPU feeding
-2025-07-05 12:53:33,992 - warehouse_threading.optimized_pipeline_system - INFO -    - SAME tested modules: detection, filtering, coordinates, database
-2025-07-05 12:53:33,992 - __main__ - INFO - [START] Starting optimized threading system...
-2025-07-05 12:53:33,993 - __main__ - INFO - [INFO] System will run until Ctrl+C is pressed
-2025-07-05 12:53:33,993 - __main__ - INFO - [MONITOR] Performance stats will be logged every 30 seconds
-2025-07-05 12:53:34,253 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:53:34,257 - modules.coordinate_mapper - INFO - Camera ID: 1
-2025-07-05 12:53:34,261 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_1.json
-2025-07-05 12:53:34,270 - modules.feature_database - INFO - Loaded 33 objects from CPU database
-2025-07-05 12:53:34,283 - modules.feature_database - INFO - CPU feature database initialized with 33 objects
-2025-07-05 12:53:34,344 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:53:34,348 - modules.coordinate_mapper - INFO - Camera ID: 2
-2025-07-05 12:53:34,351 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_2.json
-2025-07-05 12:53:34,362 - modules.feature_database - INFO - Loaded 18 objects from CPU database
-2025-07-05 12:53:34,374 - modules.feature_database - INFO - CPU feature database initialized with 18 objects
-2025-07-05 12:53:34,451 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:53:34,456 - modules.coordinate_mapper - INFO - Camera ID: 3
-2025-07-05 12:53:34,460 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_3.json
-2025-07-05 12:53:34,470 - modules.feature_database - INFO - Loaded 26 objects from CPU database
-2025-07-05 12:53:34,483 - modules.feature_database - INFO - CPU feature database initialized with 26 objects
-2025-07-05 12:53:34,589 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
-2025-07-05 12:53:34,594 - modules.coordinate_mapper - INFO - Camera ID: 4
-2025-07-05 12:53:34,598 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_4.json
-2025-07-05 12:53:34,608 - modules.feature_database - INFO - Loaded 12 objects from CPU database
-2025-07-05 12:53:34,623 - modules.feature_database - INFO - CPU feature database initialized with 12 objects
-2025-07-05 12:53:37,017 - __main__ - INFO - [COMPLETE] OPTIMIZED system shutdown complete
-2025-07-05 12:54:04,056 - warehouse_threading.optimized_pipeline_system - INFO -    Expected CPU Savings: 95%
-2025-07-05 12:54:04,061 - warehouse_threading.optimized_pipeline_system - INFO -    GPU Feed Efficiency: 0.00
-2025-07-05 12:54:04,064 - warehouse_threading.optimized_pipeline_system - INFO -    Frames Processed: 0
-2025-07-05 12:54:04,073 - warehouse_threading.optimized_queue_manager - INFO -    GPU Feed Efficiency: 0.00
-2025-07-05 12:54:04,077 - warehouse_threading.optimized_queue_manager - INFO -    Avg Queue Utilization: 0.00
-2025-07-05 12:54:04,081 - warehouse_threading.optimized_queue_manager - INFO -    Bottleneck Detected: none
-2025-07-05 12:54:04,084 - warehouse_threading.optimized_queue_manager - INFO -    Total Overflows: 0
+2025-07-17 16:18:24,116 - __main__ - INFO - 📡 Camera URL Mode: REMOTE
+2025-07-17 16:18:24,117 - __main__ - INFO - 📹 Camera 7 URL: rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/701
+2025-07-17 16:18:24,117 - __main__ - INFO - 🗄️ Database Mode: ONLINE
+2025-07-17 16:18:24,117 - __main__ - INFO - 💾 Database URI: mongodb+srv://yash:1234@cluster0.jmslb8o.mongodb.n...
+2025-07-17 16:18:24,117 - __main__ - INFO - 🚀 OPTIMIZED WAREHOUSE THREADING SYSTEM WITH GUI
+2025-07-17 16:18:24,118 - __main__ - INFO - ================================================================================
+2025-07-17 16:18:24,124 - __main__ - INFO - CONFIGURATION:
+2025-07-17 16:18:24,124 - __main__ - INFO - 📹 Active Cameras: [7] (1 cameras)
+2025-07-17 16:18:24,124 - __main__ - INFO - 🖥️ GUI Cameras: [7] (1 windows)
+2025-07-17 16:18:24,125 - __main__ - INFO - 🎛️ GUI Mode: ENABLED
+2025-07-17 16:18:24,125 - __main__ - INFO - ================================================================================
+2025-07-17 16:18:24,126 - __main__ - INFO - OPTIMIZED PROCESSING - All operations with threading optimization:
+2025-07-17 16:18:24,128 - __main__ - INFO - 1) 🚀 Smart Frame Skipping (95% CPU savings)
+2025-07-17 16:18:24,128 - __main__ - INFO - 2) 🚀 Enhanced Queue Management
+2025-07-17 16:18:24,136 - __main__ - INFO - 3) 🚀 GPU Detection (Grounding DINO + post_process_grounded_object_detection)
+2025-07-17 16:18:24,138 - __main__ - INFO - 4) 🚀 CPU Area + Grid Cell Filtering
+2025-07-17 16:18:24,139 - __main__ - INFO - 5) 🚀 CPU Physical Coordinate Translation
+2025-07-17 16:18:24,139 - __main__ - INFO - 6) 🚀 CPU SIFT Feature Matching
+2025-07-17 16:18:24,139 - __main__ - INFO - 7) 🚀 CPU Persistent Object IDs
+2025-07-17 16:18:24,140 - __main__ - INFO - 8) 🚀 CPU Cross-Frame Tracking & Database
+2025-07-17 16:18:24,140 - __main__ - INFO - ================================================================================
+2025-07-17 16:18:24,140 - __main__ - INFO - 
+GUI Mode:
+2025-07-17 16:18:24,140 - __main__ - INFO - - Green: New objects
+2025-07-17 16:18:24,141 - __main__ - INFO - - Orange: CPU-tracked existing objects
+2025-07-17 16:18:24,141 - __main__ - INFO - - Red: Failed tracking
+2025-07-17 16:18:24,141 - __main__ - INFO - - Cyan: Physical coordinate labels
+2025-07-17 16:18:24,141 - __main__ - INFO - - Press 'q' to quit
+2025-07-17 16:18:24,141 - __main__ - INFO - - Press 'n'/'p' to change detection prompts
+2025-07-17 16:18:24,141 - __main__ - INFO - ================================================================================
+2025-07-17 16:18:24,141 - __main__ - INFO - PERFORMANCE MONITORING INSTRUCTIONS:
+2025-07-17 16:18:24,142 - __main__ - INFO -    [1] Open Task Manager / System Monitor
+2025-07-17 16:18:24,142 - __main__ - INFO -    [2] Watch CPU usage - should drop from 100% to ~20-30%
+2025-07-17 16:18:24,143 - __main__ - INFO -    [3] Watch GPU usage - should increase from 20% to 80-90%
+2025-07-17 16:18:24,143 - __main__ - INFO -    [4] Watch Memory usage - should be more stable
+2025-07-17 16:18:24,143 - __main__ - INFO -    [5] Monitor for ~2-3 minutes to see the difference
+2025-07-17 16:18:24,143 - __main__ - INFO - ================================================================================
+2025-07-17 16:18:24,144 - __main__ - INFO - [INIT] Initializing optimized system for cameras: [7]
+2025-07-17 16:18:24,144 - warehouse_threading.optimized_queue_manager - INFO - [OK] Optimized Queue Manager initialized
+2025-07-17 16:18:24,144 - warehouse_threading.optimized_queue_manager - INFO - [CONFIG] OPTIMIZED Queue sizes: [('camera_to_detection', 5), ('detection_to_processing', 5), ('processing_to_database', 1), ('processing_to_gui', 5)]
+2025-07-17 16:18:24,144 - warehouse_threading.optimized_queue_manager - INFO - [MONITOR] Enhanced monitoring for GPU utilization tracking
+2025-07-17 16:18:24,145 - warehouse_config - INFO - Warehouse configuration loaded: WARP Main Warehouse
+2025-07-17 16:18:24,146 - modules.camera_manager - INFO - ✅ Camera Manager initialized for Camera 7
+2025-07-17 16:18:24,154 - warehouse_threading.camera_threads - INFO - 📹 Camera 7 components initialized
+2025-07-17 16:18:24,155 - warehouse_threading.camera_threads - INFO - ✅ Camera Thread Manager initialized for 1 cameras
+2025-07-17 16:18:24,156 - warehouse_threading.optimized_camera_threads - INFO - [OK] Optimized Camera Thread Manager initialized for 1 cameras
+2025-07-17 16:18:24,156 - warehouse_threading.optimized_camera_threads - INFO - [OPTIMIZATION] KEY FEATURE: Frame skipping BEFORE processing (95% CPU savings expected)
+2025-07-17 16:18:24,187 - modules.detector - INFO - 🚀 Using GPU for Grounding DINO: NVIDIA GeForce RTX 4050 Laptop GPU
+2025-07-17 16:18:24,187 - modules.detector - INFO - 📊 GPU Memory: 6.0GB
+2025-07-17 16:18:24,187 - modules.detector - INFO - 🎯 Selected GPU Device: cuda:0
+2025-07-17 16:18:24,188 - modules.detector - INFO - 🔍 Initializing pallet detector on cuda:0
+2025-07-17 16:18:31,236 - modules.detector - INFO - ✅ AutoProcessor loaded successfully
+2025-07-17 16:18:35,470 - modules.detector - INFO - ✅ Grounding DINO model loaded on cuda:0
+2025-07-17 16:18:35,472 - modules.detector - INFO - 📊 GPU Memory allocated: 0.87GB
+2025-07-17 16:18:35,472 - warehouse_threading.detection_pool - INFO - 🔍 Detection worker 0 initialized on cuda:0
+2025-07-17 16:18:35,473 - modules.detector - INFO - 🚀 Using GPU for Grounding DINO: NVIDIA GeForce RTX 4050 Laptop GPU
+2025-07-17 16:18:35,474 - modules.detector - INFO - 📊 GPU Memory: 6.0GB
+2025-07-17 16:18:35,474 - modules.detector - INFO - 🎯 Selected GPU Device: cuda:0
+2025-07-17 16:18:35,474 - modules.detector - INFO - 🔍 Initializing pallet detector on cuda:0
+2025-07-17 16:18:36,790 - modules.detector - INFO - ✅ AutoProcessor loaded successfully
+2025-07-17 16:18:39,715 - modules.detector - INFO - ✅ Grounding DINO model loaded on cuda:0
+2025-07-17 16:18:39,716 - modules.detector - INFO - 📊 GPU Memory allocated: 1.74GB
+2025-07-17 16:18:39,716 - warehouse_threading.detection_pool - INFO - 🔍 Detection worker 1 initialized on cuda:0
+2025-07-17 16:18:39,717 - warehouse_threading.detection_pool - INFO - ✅ Detection Thread Pool initialized with 2 workers
+2025-07-17 16:18:39,717 - warehouse_threading.optimized_pipeline_system - INFO - [GUI] Initializing display managers for cameras: [7]
+2025-07-17 16:18:39,718 - modules.gui_display - INFO - ✅ GUI Display Manager initialized for 7
+2025-07-17 16:18:39,719 - warehouse_threading.optimized_pipeline_system - INFO - [GUI] Display manager initialized for Camera 7
+2025-07-17 16:18:39,719 - warehouse_threading.optimized_pipeline_system - INFO - [OK] OPTIMIZED Pipeline Threading System initialized for cameras: [7]
+2025-07-17 16:18:39,719 - warehouse_threading.optimized_pipeline_system - INFO - [OPTIMIZATIONS] KEY FEATURES:
+2025-07-17 16:18:39,719 - warehouse_threading.optimized_pipeline_system - INFO -    - Smart frame skipping BEFORE processing (95% CPU savings)
+2025-07-17 16:18:39,719 - warehouse_threading.optimized_pipeline_system - INFO -    - Enhanced queue management for GPU feeding
+2025-07-17 16:18:39,719 - warehouse_threading.optimized_pipeline_system - INFO -    - SAME tested modules: detection, filtering, coordinates, database
+2025-07-17 16:18:39,720 - __main__ - INFO - [START] Starting optimized threading system with GUI...
+2025-07-17 16:18:39,720 - __main__ - INFO - [INFO] System will run until Ctrl+C is pressed or 'q' key in GUI
+2025-07-17 16:18:39,720 - __main__ - INFO - [MONITOR] Performance stats will be logged every 30 seconds
+2025-07-17 16:18:39,720 - warehouse_threading.optimized_pipeline_system - INFO - [START] Starting OPTIMIZED Pipeline Threading System...
+2025-07-17 16:18:39,720 - warehouse_threading.optimized_pipeline_system - INFO - [CAMERAS] Starting optimized camera threads...
+2025-07-17 16:18:39,723 - modules.camera_manager - INFO - Connecting to Camera 7...
+2025-07-17 16:18:39,723 - warehouse_threading.camera_threads - INFO - 🚀 Started camera thread for Camera 7
+2025-07-17 16:18:39,725 - warehouse_threading.optimized_pipeline_system - INFO - [DETECTION] Starting detection thread pool...
+2025-07-17 16:18:39,730 - warehouse_threading.detection_pool - INFO - ✅ Detection worker 0 started on cuda:0
+2025-07-17 16:18:39,730 - warehouse_threading.detection_pool - INFO - 🚀 Started detection worker 0
+2025-07-17 16:18:39,732 - warehouse_threading.detection_pool - INFO - ✅ Detection worker 1 started on cuda:0
+2025-07-17 16:18:39,732 - warehouse_threading.detection_pool - INFO - 🚀 Started detection worker 1
+2025-07-17 16:18:39,732 - warehouse_threading.optimized_pipeline_system - INFO - [PROCESSING] Starting processing consumer...
+2025-07-17 16:18:39,734 - warehouse_threading.optimized_pipeline_system - INFO - [START] Optimized processing consumer started (using existing modules)
+2025-07-17 16:18:39,734 - warehouse_threading.optimized_pipeline_system - INFO - [MONITOR] Starting performance monitoring...
+2025-07-17 16:18:39,735 - warehouse_threading.optimized_pipeline_system - INFO - [MONITOR] Performance monitoring started
+2025-07-17 16:18:39,736 - warehouse_threading.optimized_pipeline_system - INFO - [SUCCESS] OPTIMIZED Pipeline Threading System started successfully!
+2025-07-17 16:18:39,737 - warehouse_threading.optimized_pipeline_system - INFO - [MONITOR] Monitor CPU usage - should drop from 100% to ~20-30%
+2025-07-17 16:18:39,738 - warehouse_threading.optimized_pipeline_system - INFO - [MONITOR] Monitor GPU usage - should increase from 20% to 80-90%
+2025-07-17 16:18:40,014 - modules.frame_processor - INFO - ✅ Frame Processor initialized for Camera 7
+2025-07-17 16:18:40,015 - modules.filtering - INFO - Detection filtering initialized for Camera 7
+2025-07-17 16:18:40,015 - modules.filtering - INFO - Area filter: 10000 - 100000 pixels
+2025-07-17 16:18:40,016 - modules.filtering - INFO - Physical size limit: 15.0ft
+2025-07-17 16:18:40,016 - modules.filtering - INFO - Grid cell size: 40px
+2025-07-17 16:18:40,016 - modules.coordinate_mapper - INFO - CPU coordinate mapper initialized - Floor: 45.0ft x 30.0ft
+2025-07-17 16:18:40,017 - modules.coordinate_mapper - INFO - Camera ID: 7
+2025-07-17 16:18:40,017 - modules.coordinate_mapper - INFO - CPU coordinate calibration loaded from: ../configs/warehouse_calibration_camera_7.json
+2025-07-17 16:18:40,018 - modules.color_extractor - INFO - Object color extractor initialized
+2025-07-17 16:18:40,026 - modules.feature_database - INFO - Loaded 53 objects from CPU database
+2025-07-17 16:18:40,026 - modules.feature_database - INFO - 🎯 Camera 7 Global ID range: 7001 - 7999
+2025-07-17 16:18:40,027 - modules.feature_database - INFO - ✅ CPU SIFT detector initialized
+2025-07-17 16:18:40,027 - modules.feature_database - INFO - CPU feature database initialized with 53 objects
+2025-07-17 16:18:40,878 - warehouse_database_handler - INFO - ✅ MongoDB connected: WARP.detections
+2025-07-17 16:18:41,098 - modules.camera_manager - INFO - Camera 7 connected successfully
+2025-07-17 16:18:41,101 - warehouse_threading.optimized_camera_threads - INFO - [START] Camera 7 optimized worker started
+2025-07-17 16:18:41,253 - warehouse_database_handler - INFO - ✅ MongoDB indexes created for optimal upsert performance
+2025-07-17 16:18:41,334 - warehouse_database_handler - INFO - ✅ Database write test successful
+2025-07-17 16:18:41,417 - modules.frame_processor - INFO - ✅ All processing components injected for Camera 7
+2025-07-17 16:18:41,418 - warehouse_threading.optimized_pipeline_system - INFO - [OK] Frame processor initialized for Camera 7
+2025-07-17 16:19:02,213 - modules.detector - INFO - 🎯 Grounding DINO FPS: 0.05 (Time: 19.881s)
+2025-07-17 16:19:02,259 - modules.detector - INFO - 🎯 Grounding DINO FPS: 0.05 (Time: 19.400s)
+2025-07-17 16:19:02,491 - modules.filtering - INFO - Camera 7: Object filtered out - Size: 15.2ft x 4.5ft (exceeds 15.0ft limit)
+2025-07-17 16:19:09,736 - warehouse_threading.optimized_pipeline_system - INFO - [PERFORMANCE] OPTIMIZATION PERFORMANCE SUMMARY:
+2025-07-17 16:19:09,736 - warehouse_threading.optimized_pipeline_system - INFO -    Expected CPU Savings: 95%
+2025-07-17 16:19:09,737 - warehouse_threading.optimized_pipeline_system - INFO -    GPU Feed Efficiency: 0.60
+2025-07-17 16:19:09,738 - warehouse_threading.optimized_pipeline_system - INFO -    Frames Processed: 0
+2025-07-17 16:19:09,738 - warehouse_threading.optimized_queue_manager - INFO - [OPTIMIZATION] QUEUE OPTIMIZATION STATUS:
+2025-07-17 16:19:09,738 - warehouse_threading.optimized_queue_manager - INFO -    GPU Feed Efficiency: 0.60
+2025-07-17 16:19:09,739 - warehouse_threading.optimized_queue_manager - INFO -    Avg Queue Utilization: 0.30
+2025-07-17 16:19:09,740 - warehouse_threading.optimized_queue_manager - INFO -    Bottleneck Detected: none
+2025-07-17 16:19:09,740 - warehouse_threading.optimized_queue_manager - INFO -    Total Overflows: 0
+2025-07-17 16:19:09,740 - warehouse_threading.optimized_queue_manager - INFO -    Frames Replaced: 20 (newer frames replacing older)
+2025-07-17 16:19:17,577 - modules.feature_database - INFO - 🆕 NEW CAMERA 7 GLOBAL ID: 7477
+2025-07-17 16:19:18,830 - modules.feature_database - INFO - 🆕 NEW CAMERA 7 GLOBAL ID: 7478
+2025-07-17 16:19:18,830 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:18,896 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:18,966 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,035 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,109 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,176 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,266 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,335 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,433 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,504 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,575 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,645 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,715 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,782 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,862 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:19,938 - warehouse_database_handler - INFO - 💾 NEW object saved to DB: Global ID 7477, Camera 7
+2025-07-17 16:19:19,939 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:20,022 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:20,092 - warehouse_database_handler - INFO - 💾 NEW object saved to DB: Global ID 7478, Camera 7
+2025-07-17 16:19:20,255 - warehouse_threading.optimized_pipeline_system - INFO - [RESULTS] Camera 7: 39 raw → 23 area → 18 grid → 17 size → 17 final
+2025-07-17 16:19:20,256 - warehouse_threading.optimized_pipeline_system - INFO - [STATS] OPTIMIZED SYSTEM: Processed 1, Saved 17, New: 2, Existing: 15
+2025-07-17 16:19:20,258 - modules.filtering - INFO - Camera 7: Object filtered out - Size: 15.2ft x 4.4ft (exceeds 15.0ft limit)
+2025-07-17 16:19:22,452 - modules.detector - INFO - 🎯 Grounding DINO FPS: 0.05 (Time: 19.770s)
+2025-07-17 16:19:22,453 - modules.detector - INFO - 🎯 Grounding DINO FPS: 0.05 (Time: 19.788s)
+2025-07-17 16:19:28,670 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:28,738 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:28,804 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:28,870 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:28,938 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,018 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,084 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,163 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,233 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,330 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,448 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,514 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,580 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,647 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,716 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,783 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,854 - warehouse_database_handler - INFO - 🎨 Color data in detection: RGB=None, HSV=None, Hex=None
+2025-07-17 16:19:29,959 - warehouse_threading.optimized_pipeline_system - INFO - [RESULTS] Camera 7: 39 raw → 25 area → 18 grid → 17 size → 17 final
+2025-07-17 16:19:29,961 - warehouse_threading.optimized_pipeline_system - INFO - [STATS] OPTIMIZED SYSTEM: Processed 2, Saved 34, New: 2, Existing: 32
+2025-07-17 16:19:29,963 - modules.filtering - INFO - Camera 7: Object filtered out - Size: 15.2ft x 4.4ft (exceeds 15.0ft limit)

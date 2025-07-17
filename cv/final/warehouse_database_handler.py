@@ -21,16 +21,19 @@ logger = logging.getLogger(__name__)
 class WarehouseDatabaseHandler:
     """MongoDB database handler for warehouse detections (extracted from GPU script)"""
     
-    def __init__(self, 
-                 mongodb_url: str = "mongodb://localhost:27017/",
-                 database_name: str = "warehouse_tracking",
-                 collection_name: str = "detections",
+    def __init__(self,
+                 mongodb_url: str = None,
+                 database_name: str = None,
+                 collection_name: str = None,
                  batch_save_size: int = 10,
                  enable_mongodb: bool = True):
-        
-        self.mongodb_url = mongodb_url
-        self.database_name = database_name
-        self.collection_name = collection_name
+
+        # Use Config values as defaults if not provided
+        from configs.config import Config
+
+        self.mongodb_url = mongodb_url or Config.MONGO_URI
+        self.database_name = database_name or Config.DATABASE_NAME
+        self.collection_name = collection_name or Config.COLLECTION_NAME
         self.batch_save_size = batch_save_size
         self.enable_mongodb = enable_mongodb
         

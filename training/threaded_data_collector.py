@@ -71,8 +71,12 @@ class CameraCollectionThread(threading.Thread):
     
     def _get_rtsp_url(self) -> str:
         """Get RTSP URL for camera - Use remote URLs for training data collection"""
-        # Use remote URLs (104.181.138.5) instead of local warehouse config URLs
-        remote_url = f'rtsp://admin:wearewarp!@104.181.138.5:556{self.camera_id}/Streaming/channels/1'
+        # Use remote URLs from config.py (updated URLs)
+        from cv.configs.config import Config
+        remote_url = Config.REMOTE_RTSP_CAMERA_URLS.get(self.camera_id, "")
+        if not remote_url:
+            # Fallback to old format if camera not found
+            remote_url = f'rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/{self.camera_id}01'
         logger.info(f"📡 Camera {self.camera_id}: Using remote RTSP URL: {remote_url}")
         return remote_url
     
