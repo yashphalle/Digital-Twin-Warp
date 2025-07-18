@@ -37,9 +37,13 @@ class WarpIdResponse(BaseModel):
 app = FastAPI(title="Live Warehouse Tracking API")
 
 # Add CORS middleware
+import os
+# Get allowed origins from environment variable or use defaults
+allowed_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173,http://localhost:5174').split(',')
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

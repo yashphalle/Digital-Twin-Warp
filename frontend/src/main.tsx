@@ -70,7 +70,7 @@ const CameraFeed = ({ cameraId, status }) => {
               </div>
             )}
             <img
-              src={`http://localhost:8000/api/cameras/${cameraId}/stream`}
+              src={`${import.meta.env.VITE_API_BASE_URL}/api/cameras/${cameraId}/stream`}
               alt={`Camera ${cameraId} Stream`}
               className="w-full h-full object-cover"
               onLoad={handleImageLoad}
@@ -374,7 +374,7 @@ const LiveWarehouse = () => {
 
     setIsPolling(true);
     try {
-      const response = await fetch('http://localhost:8000/api/tracking/objects');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/tracking/objects`);
       if (response.ok) {
         const data = await response.json();
         setObjects(data.objects || []);
@@ -394,7 +394,7 @@ const LiveWarehouse = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/tracking/stats');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/tracking/stats`);
       if (response.ok) {
         const data = await response.json();
         setStats(data);
@@ -406,7 +406,7 @@ const LiveWarehouse = () => {
 
   const fetchCameras = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/cameras/status');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/cameras/status`);
       if (response.ok) {
         const data = await response.json();
         setCameras(data.cameras || []);
@@ -418,7 +418,7 @@ const LiveWarehouse = () => {
 
   const fetchWarehouseConfig = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/warehouse/config');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/warehouse/config`);
       if (response.ok) {
         const data = await response.json();
         setWarehouseConfig({
