@@ -17,6 +17,9 @@ flask-cors==6.0.1
 pymongo==4.13.1
 dnspython==2.7.0
 
+# Environment variable management
+python-dotenv==1.0.1
+
 # SQL database support (used in some components)
 SQLAlchemy==2.0.41
 alembic==1.16.2

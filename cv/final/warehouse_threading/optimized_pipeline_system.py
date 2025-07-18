@@ -168,7 +168,11 @@ class OptimizedPipelineSystem:
         from modules.coordinate_mapper import CoordinateMapper
         from modules.color_extractor import ObjectColorExtractor
         from modules.feature_database import CPUGlobalFeatureDatabase
-        from warehouse_database_handler import WarehouseDatabaseHandler
+        # Import the updated database handler that uses Config and .env
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+        from warehouse_database_handler import create_database_handler
 
         # Create frame processors for each camera (SAME as original)
         processors = {}
@@ -183,7 +187,8 @@ class OptimizedPipelineSystem:
                 coord_converter.load_calibration()
                 color_extractor = ObjectColorExtractor()
                 global_db = CPUGlobalFeatureDatabase(f"cpu_camera_{camera_id}_global_features.pkl", camera_id)
-                db_handler = WarehouseDatabaseHandler()
+                # Use factory function to create database handler with Config values (from .env)
+                db_handler = create_database_handler()
                 
                 # Inject components into frame processor (SAME as original + GUI support)
                 display_manager = self.display_managers.get(camera_id) if self.enable_gui else None

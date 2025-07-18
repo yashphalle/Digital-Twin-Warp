@@ -3,6 +3,31 @@ Comprehensive Configuration Settings for Warehouse Tracking System
 All adjustable parameters organized by category for easy tuning
 """
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+# Try multiple possible locations for .env file
+possible_env_paths = [
+    # Current working directory
+    '.env',
+    # Project root (two levels up from this config file)
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env'),
+    # One level up from cv directory
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+]
+
+env_loaded = False
+for env_path in possible_env_paths:
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        env_loaded = True
+        break
+
+# Fallback: try to load from any .env file found
+if not env_loaded:
+    load_dotenv()  # This will look for .env in current directory and parent directories
+
 class Config:
     # ==================== CAMERA SETTINGS ====================
     # Hardcoded single camera setup
@@ -138,20 +163,19 @@ class Config:
     CROSS_CAMERA_MATCH_THRESHOLD = 0.6
     
     # ==================== DATABASE SETTINGS ====================
-    # Database mode configuration (similar to camera URLs)
-    USE_LOCAL_DATABASE = False  # Switch to online WARP database
+    # Database mode configuration (load from environment with fallback)
+    USE_LOCAL_DATABASE = os.getenv('USE_LOCAL_DATABASE', 'false').lower() == 'true'
 
-    # Local MongoDB connection
-    LOCAL_MONGO_URI = "mongodb://localhost:27017/"
-
-    # Online MongoDB connection - WARP Database
-    ONLINE_MONGO_URI = "mongodb+srv://yash:1234@cluster0.jmslb8o.mongodb.net/WARP?retryWrites=true&w=majority"
+    # MongoDB connection strings (load from environment with fallbacks)
+    LOCAL_MONGO_URI = os.getenv('MONGODB_LOCAL_URI', "mongodb://localhost:27017/")
+    ONLINE_MONGO_URI = os.getenv('MONGODB_ONLINE_URI', "mongodb+srv://yash:1234@cluster0.jmslb8o.mongodb.net/WARP?retryWrites=true&w=majority")
 
     # Current MongoDB connection (will be set based on USE_LOCAL_DATABASE)
     MONGO_URI = LOCAL_MONGO_URI if USE_LOCAL_DATABASE else ONLINE_MONGO_URI
 
-    DATABASE_NAME = "WARP"
-    COLLECTION_NAME = "detections"
+    # Database and collection names (load from environment with fallbacks)
+    DATABASE_NAME = os.getenv('MONGODB_DATABASE_NAME', "WARP")
+    COLLECTION_NAME = os.getenv('MONGODB_COLLECTION_NAME', "detections")
     
     # Database behavior
     AUTO_CREATE_INDEXES = True
