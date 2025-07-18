@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-OPTIMIZED Threading System Entry Point
-Uses SAME tested modules with optimized threading for 95% CPU savings
-Zero changes to existing functionality - only threading optimization
-"""
 
 import logging
 import sys
@@ -52,14 +47,6 @@ def parse_arguments():
     return parser.parse_args()
 
 def main():
-    """
-    Main entry point for OPTIMIZED threading system with GUI support
-    Expected improvements:
-    - CPU usage: 100% → 20-30% (70-80% reduction)
-    - GPU usage: 20% → 80-90% (4-5x increase)
-    - Same detection accuracy and functionality
-    - Same GUI display as main.py
-    """
 
     # Parse command line arguments
     args = parse_arguments()

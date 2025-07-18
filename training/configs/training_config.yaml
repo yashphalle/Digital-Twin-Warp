@@ -21,18 +21,17 @@ dataset:
   name: "warehouse_pallets"
   data_root: "training/data/processed"
   
-  # Class configuration
-  classes: ["pallet", "wooden_pallet", "plastic_pallet", "stacked_pallet"]
-  num_classes: 4
+  # Class configuration - SINGLE CLASS FOR DETECTION ONLY
+  classes: ["pallet"]
+  num_classes: 1
   
-  # Text prompts for training
+  # Text prompts for training - SIMPLIFIED FOR SINGLE CLASS
   text_prompts:
-    - "wooden pallet on warehouse floor"
-    - "plastic pallet in warehouse"
-    - "stacked pallets"
-    - "pallet wrapped in plastic"
-    - "wooden skid on concrete floor"
+    - "pallet on warehouse floor"
+    - "pallet in warehouse"
     - "shipping pallet"
+    - "warehouse pallet"
+    - "pallet on concrete floor"
   
   # Data augmentation
   augmentation:

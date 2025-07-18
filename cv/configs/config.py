@@ -75,10 +75,10 @@ class Config:
     # CONFIDENCE_THRESHOLD = 0.12      # Very sensitive (catches weak detections)
     # CONFIDENCE_THRESHOLD = 0.25      # Less sensitive (fewer false positives, may miss objects)
 
-    # Alternative prompts for different scenarios:
-    # DETECTION_PROMPT = "cardboard box. package. container. pallet."  # More specific
-    # DETECTION_PROMPT = "box. package."  # Simpler
-    # DETECTION_PROMPT = "object. item. box. package. container."  # Broader
+    # Alternative prompts for pallet detection:
+    # DETECTION_PROMPT = "pallet. wooden pallet. plastic pallet. shipping pallet."  # More specific
+    # DETECTION_PROMPT = "pallet. skid."  # Simpler
+    # DETECTION_PROMPT = "pallet. wooden pallet. shipping skid. warehouse pallet."  # Broader
 
     # GPU settings
     FORCE_GPU = True
@@ -317,7 +317,7 @@ class Config:
     CORRECTED_IMAGE_QUALITY = 90 # JPEG quality for corrected 2K images
 
     # Collection timing
-    COLLECTION_FRAME_SKIP = 1200  # Frames to skip between saves (1 min at 20fps)
+    COLLECTION_FRAME_SKIP = 6000  # Frames to skip between saves (5 min at 20fps)
 
     # ==================== LOGGING SETTINGS ====================
     # Log levels
@@ -406,7 +406,7 @@ class Config:
     # REMOTE RTSP Camera URLs (104.181.138.5 network)
     REMOTE_RTSP_CAMERA_URLS = {
         # Row 1 (Front) - 4 cameras
-        1: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/201",  # Cam 1 REMOTE
+        1: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/101",  # Cam 1 REMOTE
         2: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/201",  # Cam 2 REMOTE
         3: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/301",  # Cam 3 REMOTE
         4: "rtsp://admin:wearewarp!@104.13.230.137:6554/Streaming/Channels/401",  # Cam 4 REMOTE
