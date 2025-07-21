@@ -28,7 +28,7 @@ alembic==1.16.2
 # OpenCV for image processing and camera handling
 opencv-python==4.8.1.78
 opencv-contrib-python-headless==4.11.0.86
-
+opencv-contrib-python==4.8.1.78
 # PIL/Pillow for image manipulation
 pillow==11.2.1
 
