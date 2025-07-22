@@ -36,7 +36,7 @@ class OptimizedPipelineSystem:
         # Initialize OPTIMIZED threading components
         self.queue_manager = OptimizedQueueManager(max_cameras=len(active_cameras))
         self.camera_manager = OptimizedCameraThreadManager(active_cameras, self.queue_manager)
-        self.detection_pool = DetectionThreadPool(num_workers=2, queue_manager=self.queue_manager)  # OPTIMIZED: 2 workers for better GPU utilization
+        self.detection_pool = DetectionThreadPool(num_workers=11, queue_manager=self.queue_manager)  # OPTIMIZED: 11 workers for maximum A100 utilization
 
         # Initialize GUI display managers if enabled
         self.display_managers = {}

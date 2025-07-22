@@ -117,7 +117,7 @@ class CameraThreadManager:
 
         frame_number = 0
         processed_frames = 0
-        FRAME_SKIP = 20  # Process every 20th frame
+        FRAME_SKIP = 5  # Process every 5th frame (4x more frames for better GPU utilization)
 
         while self.running:
             try:

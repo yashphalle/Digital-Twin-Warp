@@ -54,7 +54,7 @@ class OptimizedCameraThreadManager(CameraThreadManager):
         frame_number = 0
         processed_frames = 0
         skipped_frames = 0
-        FRAME_SKIP = 20  # Process every 20th frame (SAME AS main.py for comparison)
+        FRAME_SKIP = 5  # Process every 5th frame (4x more frames for better GPU utilization)
 
         while self.running:
             try:
@@ -132,7 +132,7 @@ class OptimizedCameraThreadManager(CameraThreadManager):
         stats = {
             'optimization_type': 'skip_before_processing',
             'expected_cpu_savings': '95%',
-            'frame_skip_ratio': 20,
+            'frame_skip_ratio': 5,
             'active_cameras': len(self.active_cameras),
             'threading_model': 'optimized_preprocessing'
         }
