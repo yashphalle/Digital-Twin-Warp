@@ -63,7 +63,7 @@ class ParallelPipelineSystem:
         # Initialize SAME threading components as optimized system
         self.queue_manager = OptimizedQueueManager(max_cameras=len(active_cameras))
         self.camera_manager = OptimizedCameraThreadManager(active_cameras, self.queue_manager)
-        self.detection_pool = DetectionThreadPool(num_workers=11, queue_manager=self.queue_manager)
+        self.detection_pool = DetectionThreadPool(num_workers=1, queue_manager=self.queue_manager)
 
         # NEW: Per-camera database queues and workers
         self.database_queues = {}
@@ -76,6 +76,7 @@ class ParallelPipelineSystem:
 
         # Initialize DeepSORT trackers (if enabled)
         self.deepsort_trackers = {}
+        self.seen_track_ids = {}  # Track which DeepSORT track IDs we've seen before
         if self.use_deepsort:
             for camera_id in active_cameras:
                 try:
@@ -98,6 +99,7 @@ class ParallelPipelineSystem:
                     except Exception:
                         # Version 3: Minimal parameters
                         self.deepsort_trackers[camera_id] = DeepSort()
+                    self.seen_track_ids[camera_id] = set()  # Track seen track IDs per camera
                     logger.info(f"✅ DeepSORT tracker initialized for Camera {camera_id}")
                 except Exception as e:
                     logger.error(f"❌ Failed to initialize DeepSORT for Camera {camera_id}: {e}")
@@ -226,8 +228,20 @@ class ParallelPipelineSystem:
                 # DEBUG: Log bbox values
                 logger.debug(f"[DEEPSORT_BBOX] Camera {camera_id}: Track {track.track_id} bbox: {bbox}")
 
+                # Generate proper global_id as integer (not string)
+                global_id = int(track.track_id) + (camera_id * 1000)
+
+                # Determine if this is a new or existing track
+                track_id = int(track.track_id)
+                if track_id in self.seen_track_ids[camera_id]:
+                    tracking_status = 'existing'
+                else:
+                    tracking_status = 'new'
+                    self.seen_track_ids[camera_id].add(track_id)
+
                 detection = {
-                    'global_id': f"Camera_{camera_id}_Object_{int(track.track_id) + 1000}",
+                    'global_id': global_id,
+                    'tracking_status': tracking_status,
                     'x1': int(bbox[0]),
                     'y1': int(bbox[1]),
                     'x2': int(bbox[0] + bbox[2]),
@@ -263,6 +277,7 @@ class ParallelPipelineSystem:
             # Convert back to our format
             final_detections = self._convert_from_deepsort_format(tracks, camera_id)
 
+            logger.info(f"[DEEPSORT_DEBUG] Camera {camera_id}: Final pipeline result: {len(final_detections)} detections going to database")
             logger.debug(f"[DEEPSORT] Camera {camera_id}: Tracked {len(final_detections)} objects from {len(detections)} detections")
             return final_detections
 
