@@ -19,6 +19,29 @@ from .optimized_camera_threads import OptimizedCameraThreadManager
 from .optimized_queue_manager import OptimizedQueueManager
 from .detection_pool import DetectionThreadPool
 
+# DeepSORT import (optional) - Try multiple import paths
+try:
+    from deep_sort_realtime.deepsort_tracker import DeepSort
+    DEEPSORT_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info("✅ DeepSORT available for tracking (deepsort_tracker)")
+except ImportError:
+    try:
+        from deep_sort_realtime import DeepSort
+        DEEPSORT_AVAILABLE = True
+        logger = logging.getLogger(__name__)
+        logger.info("✅ DeepSORT available for tracking (direct import)")
+    except ImportError as e:
+        DEEPSORT_AVAILABLE = False
+        logger = logging.getLogger(__name__)
+        logger.info(f"⚠️ DeepSORT import failed: {e}")
+        logger.info("Will use SIFT tracking only")
+except Exception as e:
+    DEEPSORT_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.error(f"❌ DeepSORT import error: {e}")
+    logger.info("Will use SIFT tracking only")
+
 logger = logging.getLogger(__name__)
 
 class ParallelPipelineSystem:
@@ -30,11 +53,12 @@ class ParallelPipelineSystem:
     - 11 database workers (async saves)
     """
     
-    def __init__(self, active_cameras: List[int] = [1, 2], enable_gui: bool = False, gui_cameras: List[int] = None):
+    def __init__(self, active_cameras: List[int] = [1, 2], enable_gui: bool = False, gui_cameras: List[int] = None, use_deepsort: bool = False):
         self.active_cameras = active_cameras
         self.enable_gui = enable_gui
         self.gui_cameras = gui_cameras or []
         self.running = False
+        self.use_deepsort = use_deepsort and DEEPSORT_AVAILABLE
 
         # Initialize SAME threading components as optimized system
         self.queue_manager = OptimizedQueueManager(max_cameras=len(active_cameras))
@@ -45,10 +69,47 @@ class ParallelPipelineSystem:
         self.database_queues = {}
         self.database_workers = {}
         self.processing_threads = {}
-        
+
         # Initialize per-camera database queues
         for camera_id in active_cameras:
-            self.database_queues[camera_id] = queue.Queue(maxsize=20)  # 20 database tasks per camera
+            self.database_queues[camera_id] = queue.Queue(maxsize=50)  # 50 database tasks per camera
+
+        # Initialize DeepSORT trackers (if enabled)
+        self.deepsort_trackers = {}
+        if self.use_deepsort:
+            for camera_id in active_cameras:
+                try:
+                    # Try different parameter combinations for different DeepSORT versions
+                    try:
+                        # Version 1: Try with model_type
+                        self.deepsort_trackers[camera_id] = DeepSort(
+                            model_type="osnet_x1_0",
+                            max_age=30,
+                            n_init=3,
+                            max_iou_distance=0.7
+                        )
+                    except TypeError:
+                        # Version 2: Try without model_type
+                        self.deepsort_trackers[camera_id] = DeepSort(
+                            max_age=30,
+                            n_init=3,
+                            max_iou_distance=0.7
+                        )
+                    except Exception:
+                        # Version 3: Minimal parameters
+                        self.deepsort_trackers[camera_id] = DeepSort()
+                    logger.info(f"✅ DeepSORT tracker initialized for Camera {camera_id}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize DeepSORT for Camera {camera_id}: {e}")
+                    self.use_deepsort = False
+                    break
+
+            if self.use_deepsort:
+                logger.info(f"🎯 DeepSORT tracking enabled for {len(active_cameras)} cameras")
+            else:
+                logger.info("⚠️ DeepSORT initialization failed, falling back to SIFT tracking")
+        else:
+            logger.info("📊 Using SIFT tracking (original system)")
         
         # Performance monitoring
         self.performance_stats = {
@@ -144,6 +205,84 @@ class ParallelPipelineSystem:
             worker.start()
             logger.info(f"🗄️ Started database worker for Camera {camera_id}")
 
+    def _convert_to_deepsort_format(self, detections):
+        """Convert detections to DeepSORT format"""
+        deepsort_dets = []
+        for det in detections:
+            # DeepSORT expects: ([x1, y1, x2, y2], confidence)
+            bbox = [det.get('x1', 0), det.get('y1', 0), det.get('x2', 0), det.get('y2', 0)]
+            confidence = det.get('confidence', 0.8)
+            deepsort_dets.append((bbox, confidence))
+        return deepsort_dets
+
+    def _convert_from_deepsort_format(self, tracks, camera_id: int):
+        """Convert DeepSORT tracks back to detection format"""
+        final_detections = []
+        for track in tracks:
+            if not hasattr(track, 'is_deleted') or not track.is_deleted():  # Include ALL active tracks (tentative + confirmed)
+                bbox = track.to_ltwh()  # [x, y, width, height]
+
+                # DEBUG: Log bbox values
+                logger.debug(f"[DEEPSORT_BBOX] Camera {camera_id}: Track {track.track_id} bbox: {bbox}")
+
+                detection = {
+                    'global_id': f"Camera_{camera_id}_Object_{track.track_id + 1000}",
+                    'x1': int(bbox[0]),
+                    'y1': int(bbox[1]),
+                    'x2': int(bbox[0] + bbox[2]),
+                    'y2': int(bbox[1] + bbox[3]),
+                    'confidence': track.get_det_conf() if hasattr(track, 'get_det_conf') else 0.8,
+                    'track_id': track.track_id,
+                    'tracking_method': 'deepsort'
+                }
+
+                # DEBUG: Log final detection format
+                logger.debug(f"[DEEPSORT_DETECTION] Camera {camera_id}: {detection['global_id']} -> x1={detection['x1']}, y1={detection['y1']}, x2={detection['x2']}, y2={detection['y2']}")
+
+                final_detections.append(detection)
+        return final_detections
+
+    def _deepsort_tracking(self, camera_id: int, detections, frame):
+        """Perform DeepSORT tracking"""
+        try:
+            # CRITICAL FIX: Handle empty detections
+            if len(detections) == 0:
+                logger.debug(f"[DEEPSORT] Camera {camera_id}: No detections to track, updating with empty list")
+                # Still update tracker to age existing tracks
+                tracks = self.deepsort_trackers[camera_id].update_tracks([], frame=frame)
+                final_detections = self._convert_from_deepsort_format(tracks, camera_id)
+                return final_detections
+
+            # Convert to DeepSORT format
+            deepsort_dets = self._convert_to_deepsort_format(detections)
+
+            # Update tracks
+            tracks = self.deepsort_trackers[camera_id].update_tracks(deepsort_dets, frame=frame)
+
+            # Convert back to our format
+            final_detections = self._convert_from_deepsort_format(tracks, camera_id)
+
+            logger.debug(f"[DEEPSORT] Camera {camera_id}: Tracked {len(final_detections)} objects from {len(detections)} detections")
+            return final_detections
+
+        except Exception as e:
+            logger.error(f"[DEEPSORT] Camera {camera_id}: DeepSORT tracking failed: {e}")
+            raise
+
+    def _safe_tracking(self, camera_id: int, detections, frame, processor):
+        """Safe tracking with fallback to SIFT"""
+        if self.use_deepsort:
+            try:
+                # Use DeepSORT tracking (now with empty detection handling)
+                return self._deepsort_tracking(camera_id, detections, frame)
+            except Exception as e:
+                logger.error(f"[FALLBACK] Camera {camera_id}: DeepSORT failed, using SIFT: {e}")
+                # Fallback to SIFT
+                return processor.assign_global_ids(detections, frame)
+        else:
+            # Use original SIFT tracking
+            return processor.assign_global_ids(detections, frame)
+
     def _camera_processing_worker(self, camera_id: int):
         """Process frames for specific camera only"""
         logger.info(f"[PROCESSING] Camera {camera_id} processing worker started")
@@ -231,8 +370,14 @@ class ParallelPipelineSystem:
                     # Stage 3: Physical size filtering
                     processor.size_filtered_detections = processor.filtering.apply_physical_size_filter(processor.grid_filtered_detections)
 
-                    # Stage 4: SIFT feature matching and global ID assignment
-                    processor.final_tracked_detections = processor.assign_global_ids(processor.size_filtered_detections, frame)
+                    # Stage 4: Object tracking (DeepSORT or SIFT)
+                    logger.debug(f"[PROCESSING] Camera {camera_id}: Starting tracking with {len(processor.size_filtered_detections)} size-filtered detections")
+
+                    processor.final_tracked_detections = self._safe_tracking(
+                        camera_id, processor.size_filtered_detections, frame, processor
+                    )
+
+                    logger.debug(f"[PROCESSING] Camera {camera_id}: Tracking completed, got {len(processor.final_tracked_detections)} final detections")
 
                     # Stage 5: ASYNC database save (NEW!)
                     for detection in processor.final_tracked_detections:

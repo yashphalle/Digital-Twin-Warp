@@ -40,7 +40,9 @@ def main():
                        help='Run in headless mode (no GUI windows)')
     parser.add_argument('--test-mode', choices=['single', 'all'], default='single',
                        help='Test mode: single camera or all cameras')
-    
+    parser.add_argument('--tracking', choices=['sift', 'deepsort'], default='sift',
+                       help='Tracking method: sift (original) or deepsort (new)')
+
     args = parser.parse_args()
     
     # Determine cameras to test
@@ -58,12 +60,16 @@ def main():
     ENABLE_GUI = not args.no_gui
     GUI_CAMERAS = ACTIVE_CAMERAS[:2] if ENABLE_GUI else []  # Limit GUI to 2 cameras for testing
 
+    # Tracking Configuration
+    USE_DEEPSORT = args.tracking == 'deepsort'
+
     logger.info("PARALLEL PIPELINE SYSTEM TEST")
     logger.info("=" * 80)
     logger.info("CONFIGURATION:")
     logger.info(f"Active Cameras: {ACTIVE_CAMERAS} ({len(ACTIVE_CAMERAS)} cameras)")
     logger.info(f"GUI Cameras: {GUI_CAMERAS} ({len(GUI_CAMERAS)} windows)")
     logger.info(f"GUI Mode: {'ENABLED' if ENABLE_GUI else 'HEADLESS'}")
+    logger.info(f"Tracking Method: {'DeepSORT (NEW)' if USE_DEEPSORT else 'SIFT (Original)'}")
     logger.info("=" * 80)
     logger.info("PARALLEL PROCESSING ARCHITECTURE:")
     logger.info("1) Camera Threads (same as optimized)")
@@ -71,6 +77,10 @@ def main():
     logger.info("3) NEW: PARALLEL Processing Threads (11 threads instead of 1)")
     logger.info("4) NEW: ASYNC Database Workers (11 workers instead of blocking)")
     logger.info("5) Per-Camera Performance Monitoring")
+    if USE_DEEPSORT:
+        logger.info("6) NEW: DeepSORT Object Tracking (GPU-accelerated)")
+    else:
+        logger.info("6) SIFT Object Tracking (original system)")
     logger.info("=" * 80)
 
     if ENABLE_GUI:
@@ -103,7 +113,8 @@ def main():
         system = ParallelPipelineSystem(
             active_cameras=ACTIVE_CAMERAS,
             enable_gui=ENABLE_GUI,
-            gui_cameras=GUI_CAMERAS
+            gui_cameras=GUI_CAMERAS,
+            use_deepsort=USE_DEEPSORT
         )
 
         logger.info("[INIT] Parallel system initialized successfully")

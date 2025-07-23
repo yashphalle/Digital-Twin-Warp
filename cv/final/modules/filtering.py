@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class DetectionFiltering:
     """CPU-based detection filtering system"""
     
-    def __init__(self, camera_id: int = 1, min_area: int = 10000, 
-                 max_area: int = 100000, max_physical_size_ft: float = 15.0,
+    def __init__(self, camera_id: int = 1, min_area: int = 10000,
+                 max_area: int = 100000, max_physical_size_ft: float = 50.0,
                  cell_size: int = 40):
         self.camera_id = camera_id
         self.MIN_AREA = min_area
