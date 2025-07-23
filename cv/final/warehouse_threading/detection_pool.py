@@ -93,7 +93,10 @@ class DetectionThreadPool:
                 frame_data = self.queue_manager.get_frame('camera_to_detection', timeout=1.0)
                 if frame_data is None:
                     continue
-                
+
+                # DEBUG: Log which camera is being processed
+                logger.info(f"🔍 Worker {worker_id}: Processing Camera {frame_data.camera_id} frame {frame_data.frame_number}")
+
                 # Record start time
                 start_time = time.time()
                 
