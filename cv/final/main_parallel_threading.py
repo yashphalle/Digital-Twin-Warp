@@ -34,8 +34,8 @@ def main():
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Parallel Pipeline System Test')
-    parser.add_argument('--cameras', nargs='+', type=int, default=[1], 
-                       help='Camera IDs to test (default: [1] for single camera test)')
+    parser.add_argument('--cameras', nargs='+', type=int, default=[1,2,3,4,5,6,7,8,9,10,11],
+                       help='Camera IDs to test (default: all 11 cameras)')
     parser.add_argument('--no-gui', action='store_true', 
                        help='Run in headless mode (no GUI windows)')
     parser.add_argument('--test-mode', choices=['single', 'all'], default='single',

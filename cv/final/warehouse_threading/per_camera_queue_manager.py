@@ -31,9 +31,15 @@ class PerCameraQueueManager(QueueManager):
             for camera_id in self.active_cameras
         }
         
-        # SHARED queues for other pipeline stages
+        # PER-CAMERA processing queues (NEW - Phase 1)
+        self.camera_processing_queues = {
+            f'camera_{camera_id}_detection_to_processing': queue.Queue(maxsize=20)
+            for camera_id in self.active_cameras
+        }
+
+        # SHARED queues for other pipeline stages (KEEP existing for compatibility)
         self.queues = {
-            # Detection → Processing (SMALLER with frame replacement)
+            # Detection → Processing (KEEP for backward compatibility)
             'detection_to_processing': queue.Queue(maxsize=max_cameras * 20),
 
             # Processing → Database (SAME as original)
@@ -197,7 +203,16 @@ class PerCameraQueueManager(QueueManager):
         if queue_name == 'camera_to_detection':
             logger.debug(f"[PUT] Routing Camera {frame_data.camera_id} frame to per-camera queue")
             return self.put_camera_frame(frame_data.camera_id, frame_data, timeout)
-        
+
+        # Route per-camera processing frames (NEW - Phase 1)
+        if queue_name in self.camera_processing_queues:
+            try:
+                self.camera_processing_queues[queue_name].put(frame_data, timeout=timeout)
+                return True
+            except queue.Full:
+                logger.warning(f"[QUEUE] {queue_name} full, dropping frame")
+                return False
+
         # Use parent implementation for other queues
         return super().put_frame(queue_name, frame_data, timeout)
     
@@ -208,7 +223,14 @@ class PerCameraQueueManager(QueueManager):
         # Use round-robin for detection frames
         if queue_name == 'camera_to_detection':
             return self.get_camera_frame_round_robin(timeout)
-        
+
+        # Get from per-camera processing queues (NEW - Phase 1)
+        if queue_name in self.camera_processing_queues:
+            try:
+                return self.camera_processing_queues[queue_name].get(timeout=timeout)
+            except queue.Empty:
+                return None
+
         # Use parent implementation for other queues
         return super().get_frame(queue_name, timeout)
     

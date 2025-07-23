@@ -38,6 +38,9 @@ class PerCameraOptimizedPipelineSystem:
         self.camera_manager = OptimizedCameraThreadManager(active_cameras, self.queue_manager)
         self.detection_pool = PerCameraDetectionThreadPool(num_workers=11, queue_manager=self.queue_manager)  # TESTING: 1 worker
 
+        # NEW: Per-camera processing threads (copied from parallel_pipeline_system.py)
+        self.processing_threads = {}
+
         # Initialize GUI display managers if enabled (SAME as optimized system)
         self.display_managers = {}
         if self.enable_gui:
@@ -52,8 +55,7 @@ class PerCameraOptimizedPipelineSystem:
                 logger.error(f"[GUI] Failed to initialize display managers: {e}")
                 self.enable_gui = False
 
-        # Initialize frame processors for each camera (SAME as optimized system)
-        self.frame_processors = {}
+        # Frame processors now handled by individual processing threads
 
         # Performance monitoring
         self.stats_thread = None
@@ -90,9 +92,9 @@ class PerCameraOptimizedPipelineSystem:
             logger.info("[DETECTION] Starting per-camera detection thread pool...")
             self.detection_pool.start_detection_workers()
 
-            # Start processing consumer (SAME as optimized system)
-            logger.info("[PROCESSING] Starting processing consumer...")
-            self._start_processing_consumer()
+            # Start processing threads (11 parallel processing threads)
+            logger.info("[PROCESSING] Starting parallel processing threads...")
+            self._start_processing_threads()
 
             # Start performance monitoring
             logger.info("[MONITOR] Starting performance monitoring...")
@@ -111,131 +113,129 @@ class PerCameraOptimizedPipelineSystem:
             self.stop()
             raise
 
-    def _start_processing_consumer(self):
-        """Start processing consumer thread (SAME as optimized system)"""
-        self.processing_thread = threading.Thread(
-            target=self._processing_consumer_worker,
-            name="PerCameraProcessingConsumer",
-            daemon=True
-        )
-        self.processing_thread.start()
-        logger.info("[START] Per-camera optimized processing consumer started (using existing modules)")
+    def _start_processing_threads(self):
+        """Start 11 parallel processing threads (copied from parallel_pipeline_system.py)"""
+        for camera_id in self.active_cameras:
+            thread = threading.Thread(
+                target=self._camera_processing_worker,
+                args=(camera_id,),
+                name=f"Processing-Camera-{camera_id}",
+                daemon=True
+            )
+            self.processing_threads[camera_id] = thread
+            thread.start()
+            logger.info(f"🚀 Started processing thread for Camera {camera_id}")
 
-    def _processing_consumer_worker(self):
-        """Processing consumer worker (SAME logic as optimized system)"""
-        logger.info("[PROCESSING] Per-camera processing consumer worker started")
-        
-        while self.running:
-            try:
-                # Get processed frame from detection workers
-                frame_data = self.queue_manager.get_frame('detection_to_processing', timeout=1.0)
-                if frame_data is None:
-                    continue
+    def _camera_processing_worker(self, camera_id: int):
+        """Process frames for specific camera only (copied from parallel_pipeline_system.py)"""
+        logger.info(f"[PROCESSING] Camera {camera_id} processing worker started")
 
-                camera_id = frame_data.camera_id
-                
-                # Initialize frame processor for this camera if not exists (SAME as optimized)
-                if camera_id not in self.frame_processors:
-                    self._initialize_frame_processor(camera_id)
+        # Import processors (SAME as optimized system) - Fixed to use correct processor
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+        from modules.frame_processor import CPUFrameProcessor
+        from modules.filtering import DetectionFiltering
+        from modules.coordinate_mapper import CoordinateMapper
+        from modules.feature_database import CPUGlobalFeatureDatabase
+        from modules.color_extractor import ObjectColorExtractor
+        from warehouse_database_handler import create_database_handler
 
-                # Process frame using SAME modules as optimized system
-                frame_processor = self.frame_processors[camera_id]
-                
-                # Process using individual stages (SAME as optimized system)
-                raw_detections = frame_data.metadata.get('raw_detections', [])
-                frame = frame_data.frame
-                frame_height, frame_width = frame.shape[:2]
-
-                # Set raw detections (SAME as optimized system)
-                frame_processor.raw_detections = raw_detections
-
-                # Stage 1: Apply filtering (SAME as optimized system)
-                frame_processor.area_filtered_detections = frame_processor.filtering.apply_area_filter(raw_detections)
-                frame_processor.grid_filtered_detections = frame_processor.filtering.apply_grid_cell_filter(frame_processor.area_filtered_detections)
-
-                # Stage 2: Physical coordinate translation (SAME as optimized system)
-                frame_processor.grid_filtered_detections = frame_processor.translate_to_physical_coordinates(
-                    frame_processor.grid_filtered_detections, frame_width, frame_height
-                )
-
-                # Stage 3: Physical size filtering (SAME as optimized system)
-                frame_processor.size_filtered_detections = frame_processor.filtering.apply_physical_size_filter(frame_processor.grid_filtered_detections)
-
-                # Stage 4: SIFT feature matching and global ID assignment (SAME as optimized system)
-                frame_processor.final_tracked_detections = frame_processor.assign_global_ids(frame_processor.size_filtered_detections, frame)
-
-                # Stage 5: Save to database (SAME as optimized system)
-                if frame_processor.db_handler and frame_processor.db_handler.is_connected():
-                    for detection in frame_processor.final_tracked_detections:
-                        frame_processor.db_handler.save_detection_to_db(camera_id, detection)
-
-                # Update frame data with processed results
-                frame_data.stage = "processed"
-                frame_data.metadata.update({
-                    'final_tracked_detections': frame_processor.final_tracked_detections,
-                    'detection_counts': frame_processor.get_detection_counts(),
-                    'per_camera_processing': True
-                })
-
-                # Send to GUI if enabled (SAME as optimized system)
-                if self.enable_gui and camera_id in self.display_managers:
-                    self.queue_manager.put_frame('processing_to_gui', frame_data, timeout=0.1)
-
-                # Database operations handled by frame processor (SAME as optimized system)
-                
-            except Exception as e:
-                logger.error(f"[ERROR] Per-camera processing consumer error: {e}")
-                time.sleep(0.1)
-
-        logger.info("[STOP] Per-camera processing consumer worker stopped")
-
-    def _initialize_frame_processor(self, camera_id: int):
-        """Initialize frame processor for camera (SAME as optimized system)"""
+        # Create camera-specific processor (SAME as optimized system)
         try:
-            import sys
-            import os
-            sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
-            from modules.frame_processor import CPUFrameProcessor
-            from modules.filtering import DetectionFiltering
-            from modules.coordinate_mapper import CoordinateMapper
-            from modules.feature_database import CPUGlobalFeatureDatabase
-            from modules.color_extractor import ObjectColorExtractor
-            from warehouse_database_handler import create_database_handler
-
-            # Initialize frame processor
+            # Create frame processor (SAME as original)
             frame_processor = CPUFrameProcessor(camera_id)
 
-            # Initialize components (SAME as optimized system)
+            # Initialize all components (SAME as original)
             filtering = DetectionFiltering(camera_id)
             coord_converter = CoordinateMapper(camera_id=camera_id)
-            coord_converter.load_calibration()  # ← MISSING! This is why coordinates fail
-            global_db = CPUGlobalFeatureDatabase(f"cpu_camera_{camera_id}_global_features.pkl", camera_id)
-            color_extractor = ObjectColorExtractor()
+            coord_converter.load_calibration()
 
-            # Use factory function to create database handler with Config values (from .env)
+            sift_tracker = CPUGlobalFeatureDatabase(f"cpu_camera_{camera_id}_global_features.pkl", camera_id)
+            color_extractor = ObjectColorExtractor()
             db_handler = create_database_handler()
 
-            # Inject components into frame processor (SAME as original + GUI support)
-            display_manager = self.display_managers.get(camera_id) if self.enable_gui else None
+            # Inject components into frame processor (SAME as original)
             frame_processor.inject_components(
                 fisheye_corrector=None,  # Already done in camera thread
                 pallet_detector=None,    # Already done in detection thread
                 filtering=filtering,
                 coordinate_mapper=coord_converter,
                 coordinate_mapper_initialized=True,
-                global_db=global_db,
+                global_db=sift_tracker,
                 color_extractor=color_extractor,
                 db_handler=db_handler,
-                display_manager=display_manager  # GUI display manager if enabled
+                display_manager=None  # No GUI in processing thread
             )
 
-            self.frame_processors[camera_id] = frame_processor
-            logger.info(f"[OK] Frame processor initialized for Camera {camera_id}")
-
+            processor = frame_processor
+            logger.info(f"[PROCESSING] Camera {camera_id} processor initialized")
         except Exception as e:
-            logger.error(f"[ERROR] Failed to initialize frame processor for Camera {camera_id}: {e}")
-            raise
+            logger.error(f"[PROCESSING] Failed to initialize processor for Camera {camera_id}: {e}")
+            return
+
+        processed_count = 0
+
+        while self.running:
+            try:
+                # Get frame from per-camera processing queue (NEW - Phase 1)
+                per_camera_queue = f'camera_{camera_id}_detection_to_processing'
+                frame_data = self.queue_manager.get_frame(per_camera_queue, timeout=1.0)
+                if frame_data is None:
+                    continue
+
+                # No camera filtering needed - queue is camera-specific!
+
+                processing_start = time.time()
+
+                # Extract detection results (SAME as optimized system)
+                raw_detections = frame_data.metadata.get('raw_detections', [])
+                frame = frame_data.frame
+
+                # REUSE EXISTING PROCESSING PIPELINE (SAME as optimized system)
+                try:
+                    # Set raw detections
+                    processor.raw_detections = raw_detections
+
+                    # Apply existing processing pipeline
+                    frame_height, frame_width = frame.shape[:2]
+
+                    # Stage 1: Apply filtering
+                    processor.area_filtered_detections = processor.filtering.apply_area_filter(raw_detections)
+                    processor.grid_filtered_detections = processor.filtering.apply_grid_cell_filter(processor.area_filtered_detections)
+
+                    # Stage 2: Physical coordinate translation
+                    processor.grid_filtered_detections = processor.translate_to_physical_coordinates(
+                        processor.grid_filtered_detections, frame_width, frame_height
+                    )
+
+                    # Stage 3: Physical size filtering
+                    processor.size_filtered_detections = processor.filtering.apply_physical_size_filter(processor.grid_filtered_detections)
+
+                    # Stage 4: SIFT feature matching and global ID assignment
+                    processor.final_tracked_detections = processor.assign_global_ids(processor.size_filtered_detections, frame)
+
+                    # Stage 5: Save to database (SAME as optimized system)
+                    if processor.db_handler and processor.db_handler.is_connected():
+                        for detection in processor.final_tracked_detections:
+                            processor.db_handler.save_detection_to_db(camera_id, detection)
+
+                    processed_count += 1
+                    processing_time = time.time() - processing_start
+
+                    logger.debug(f"[PROCESSING] Camera {camera_id}: Processed frame {frame_data.frame_number} in {processing_time:.3f}s")
+
+                except Exception as e:
+                    logger.error(f"[PROCESSING] Camera {camera_id} processing error: {e}")
+                    continue
+
+            except Exception as e:
+                logger.error(f"[PROCESSING] Camera {camera_id} worker error: {e}")
+                time.sleep(0.1)  # Brief pause on error
+
+        logger.info(f"[PROCESSING] Camera {camera_id} processing worker stopped")
+
+    # Frame processor initialization now handled by individual processing threads
 
     def _start_performance_monitoring(self):
         """Start performance monitoring thread (SAME as optimized system)"""

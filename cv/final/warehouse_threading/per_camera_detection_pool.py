@@ -149,10 +149,11 @@ class PerCameraDetectionThreadPool:
                     'per_camera_processing': True
                 })
                 
-                # Queue for processing threads
-                success = self.queue_manager.put_frame('detection_to_processing', frame_data, timeout=0.5)
+                # Queue for processing threads (NEW - Phase 1: Use per-camera processing queue)
+                per_camera_queue = f'camera_{camera_id}_detection_to_processing'
+                success = self.queue_manager.put_frame(per_camera_queue, frame_data, timeout=0.5)
                 if not success:
-                    logger.debug(f"🔍 Worker {worker_id}: Frame from Camera {camera_id} dropped (processing queue full)")
+                    logger.debug(f"🔍 Worker {worker_id}: Frame from Camera {camera_id} dropped (per-camera processing queue full)")
                 
                 # Update statistics
                 with self._stats_lock:

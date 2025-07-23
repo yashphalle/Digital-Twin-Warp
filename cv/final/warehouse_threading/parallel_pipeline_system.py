@@ -63,7 +63,7 @@ class ParallelPipelineSystem:
         # Initialize SAME threading components as optimized system
         self.queue_manager = OptimizedQueueManager(max_cameras=len(active_cameras))
         self.camera_manager = OptimizedCameraThreadManager(active_cameras, self.queue_manager)
-        self.detection_pool = DetectionThreadPool(num_workers=1, queue_manager=self.queue_manager)
+        self.detection_pool = DetectionThreadPool(num_workers=11, queue_manager=self.queue_manager)
 
         # NEW: Per-camera database queues and workers
         self.database_queues = {}
