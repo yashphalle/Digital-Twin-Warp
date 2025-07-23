@@ -239,20 +239,25 @@ class ParallelPipelineSystem:
                     tracking_status = 'new'
                     self.seen_track_ids[camera_id].add(track_id)
 
+                # Convert bbox from [x, y, width, height] to [x1, y1, x2, y2]
+                x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
+                area = (x2 - x1) * (y2 - y1)
+
+                # Create detection in the EXPECTED format for frontend/backend compatibility
                 detection = {
                     'global_id': global_id,
                     'tracking_status': tracking_status,
-                    'x1': int(bbox[0]),
-                    'y1': int(bbox[1]),
-                    'x2': int(bbox[0] + bbox[2]),
-                    'y2': int(bbox[1] + bbox[3]),
+                    'bbox': [x1, y1, x2, y2],                    # ✅ REQUIRED for frontend
+                    'corners': [[x1, y1], [x2, y1], [x2, y2], [x1, y2]], # ✅ REQUIRED for frontend
                     'confidence': track.get_det_conf() if hasattr(track, 'get_det_conf') else 0.8,
+                    'area': area,                                # ✅ REQUIRED for frontend
+                    'shape_type': 'quadrangle',                  # ✅ REQUIRED for frontend
                     'track_id': track.track_id,
                     'tracking_method': 'deepsort'
                 }
 
                 # DEBUG: Log final detection format
-                logger.debug(f"[DEEPSORT_DETECTION] Camera {camera_id}: {detection['global_id']} -> x1={detection['x1']}, y1={detection['y1']}, x2={detection['x2']}, y2={detection['y2']}")
+                logger.debug(f"[DEEPSORT_DETECTION] Camera {camera_id}: {detection['global_id']} -> bbox={detection['bbox']}, area={detection['area']}")
 
                 final_detections.append(detection)
         return final_detections
@@ -289,8 +294,59 @@ class ParallelPipelineSystem:
         """Safe tracking with fallback to SIFT"""
         if self.use_deepsort:
             try:
+                # ✅ CRITICAL FIX: Apply fisheye correction first (same as SIFT)
+                processed_frame = frame.copy()
+                processed_frame = processor.fisheye_corrector.correct(processed_frame)
+
+                # Resize if too large (same as SIFT)
+                height, width = processed_frame.shape[:2]
+                if width > 1600:
+                    scale = 1600 / width
+                    new_width = int(width * scale)
+                    new_height = int(height * scale)
+                    processed_frame = cv2.resize(processed_frame, (new_width, new_height))
+
                 # Use DeepSORT tracking (now with empty detection handling)
-                return self._deepsort_tracking(camera_id, detections, frame)
+                tracked_detections = self._deepsort_tracking(camera_id, detections, processed_frame)
+
+                # ✅ ADD MISSING PROCESSING STEPS (same as SIFT):
+                # Step 1: Physical coordinate translation using PROCESSED frame dimensions
+                frame_height, frame_width = processed_frame.shape[:2]  # ✅ FIXED: Use processed frame dimensions
+                tracked_detections = processor.translate_to_physical_coordinates(
+                    tracked_detections, frame_width, frame_height
+                )
+
+                # Step 2: Color extraction using PROCESSED frame
+                for detection in tracked_detections:
+                    try:
+                        # Extract image region for color analysis using PROCESSED frame
+                        bbox = detection['bbox']
+                        x1, y1, x2, y2 = bbox
+                        image_region = processed_frame[y1:y2, x1:x2]  # ✅ FIXED: Use processed frame
+
+                        # Extract dominant color from detected object (same as SIFT)
+                        color_info = processor.color_extractor.extract_dominant_color(image_region)
+                        detection.update(color_info)  # Add color data to detection
+
+                        # Add similarity_score (DeepSORT doesn't have this, so set to 1.0)
+                        if 'similarity_score' not in detection:
+                            detection['similarity_score'] = 1.0
+
+                    except Exception as e:
+                        logger.error(f"[DEEPSORT] Camera {camera_id}: Color extraction failed for detection: {e}")
+                        # Add default color info if extraction fails
+                        detection.update({
+                            'color_rgb': None,
+                            'color_hsv': None,
+                            'color_hex': None,
+                            'color_confidence': 0.0,
+                            'color_name': 'unknown',
+                            'extraction_method': 'failed',
+                            'similarity_score': 1.0
+                        })
+
+                return tracked_detections
+
             except Exception as e:
                 logger.error(f"[FALLBACK] Camera {camera_id}: DeepSORT failed, using SIFT: {e}")
                 # Fallback to SIFT
