@@ -29,13 +29,13 @@ class OptimizedQueueManager(QueueManager):
         # OPTIMIZED queue sizes with frame replacement strategy
         self.queues = {
             # Camera → Detection (SMALLER with frame replacement for real-time processing)
-            'camera_to_detection': queue.Queue(maxsize=max_cameras * 5),  # 5 frames max - newer frames replace older
+            'camera_to_detection': queue.Queue(maxsize=max_cameras * 15),  # 5 frames max - newer frames replace older
 
             # Detection → Processing (SMALLER with frame replacement)
-            'detection_to_processing': queue.Queue(maxsize=max_cameras * 5),  # 5 frames max - newer frames replace older
+            'detection_to_processing': queue.Queue(maxsize=max_cameras * 20),  # 5 frames max - newer frames replace older
 
             # Processing → Database (SAME as original)
-            'processing_to_database': queue.Queue(maxsize=max_cameras * 1),
+            'processing_to_database': queue.Queue(maxsize=max_cameras * 20),
 
             # Processing → GUI (SMALLER for real-time display)
             'processing_to_gui': queue.Queue(maxsize=5),

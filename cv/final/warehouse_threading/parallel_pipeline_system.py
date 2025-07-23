@@ -81,24 +81,32 @@ class ParallelPipelineSystem:
             for camera_id in active_cameras:
                 try:
                     # Try different parameter combinations for different DeepSORT versions
+                    # ✅ CRITICAL FIX: Force DeepSORT to use CPU to avoid GPU competition with Grounding DINO
                     try:
-                        # Version 1: Try with model_type
+                        # Version 1: Try with model_type and CPU-only
                         self.deepsort_trackers[camera_id] = DeepSort(
                             model_type="osnet_x1_0",
                             max_age=30,
                             n_init=3,
-                            max_iou_distance=0.7
+                            max_iou_distance=0.7,
+                            embedder_gpu=False,  # Force CPU for embedder
+                            half_precision=False  # Disable FP16 for CPU
                         )
                     except TypeError:
-                        # Version 2: Try without model_type
+                        # Version 2: Try without model_type but still CPU-only
                         self.deepsort_trackers[camera_id] = DeepSort(
                             max_age=30,
                             n_init=3,
-                            max_iou_distance=0.7
+                            max_iou_distance=0.7,
+                            embedder_gpu=False,  # Force CPU for embedder
+                            half_precision=False  # Disable FP16 for CPU
                         )
                     except Exception:
-                        # Version 3: Minimal parameters
-                        self.deepsort_trackers[camera_id] = DeepSort()
+                        # Version 3: Minimal parameters with CPU-only
+                        self.deepsort_trackers[camera_id] = DeepSort(
+                            embedder_gpu=False,  # Force CPU for embedder
+                            half_precision=False  # Disable FP16 for CPU
+                        )
                     self.seen_track_ids[camera_id] = set()  # Track seen track IDs per camera
                     logger.info(f"✅ DeepSORT tracker initialized for Camera {camera_id}")
                 except Exception as e:
