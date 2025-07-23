@@ -210,7 +210,8 @@ class ParallelPipelineSystem:
         deepsort_dets = []
         for det in detections:
             # DeepSORT expects: ([x1, y1, x2, y2], confidence)
-            bbox = [det.get('x1', 0), det.get('y1', 0), det.get('x2', 0), det.get('y2', 0)]
+            # Extract bbox from the 'bbox' key which contains [x1, y1, x2, y2]
+            bbox = det.get('bbox', [0, 0, 0, 0])
             confidence = det.get('confidence', 0.8)
             deepsort_dets.append((bbox, confidence))
         return deepsort_dets
@@ -219,14 +220,14 @@ class ParallelPipelineSystem:
         """Convert DeepSORT tracks back to detection format"""
         final_detections = []
         for track in tracks:
-            if not hasattr(track, 'is_deleted') or not track.is_deleted():  # Include ALL active tracks (tentative + confirmed)
+            if not (hasattr(track, 'is_deleted') and track.is_deleted()):  # Include ALL active tracks (tentative + confirmed)
                 bbox = track.to_ltwh()  # [x, y, width, height]
 
                 # DEBUG: Log bbox values
                 logger.debug(f"[DEEPSORT_BBOX] Camera {camera_id}: Track {track.track_id} bbox: {bbox}")
 
                 detection = {
-                    'global_id': f"Camera_{camera_id}_Object_{track.track_id + 1000}",
+                    'global_id': f"Camera_{camera_id}_Object_{int(track.track_id) + 1000}",
                     'x1': int(bbox[0]),
                     'y1': int(bbox[1]),
                     'x2': int(bbox[0] + bbox[2]),
