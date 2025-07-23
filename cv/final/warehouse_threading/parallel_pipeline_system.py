@@ -218,8 +218,8 @@ class ParallelPipelineSystem:
             deepsort_dets.append((bbox, confidence))
         return deepsort_dets
 
-    def _convert_from_deepsort_format(self, tracks, camera_id: int):
-        """Convert DeepSORT tracks back to detection format"""
+    def _convert_from_deepsort_format(self, tracks, camera_id: int, original_detections=None):
+        """Convert DeepSORT tracks back to detection format, preserving physical coordinates"""
         final_detections = []
         for track in tracks:
             if not (hasattr(track, 'is_deleted') and track.is_deleted()):  # Include ALL active tracks (tentative + confirmed)
@@ -256,8 +256,34 @@ class ParallelPipelineSystem:
                     'tracking_method': 'deepsort'
                 }
 
+                # ✅ CRITICAL FIX: Copy physical coordinates from original detections
+                # Since DeepSORT maintains detection order, use track index to match
+                track_index = len(final_detections)  # Current index in the list
+
+                if original_detections and track_index < len(original_detections):
+                    # Use the detection at the same index
+                    orig_det = original_detections[track_index]
+                    detection.update({
+                        'physical_x_ft': orig_det.get('physical_x_ft'),
+                        'physical_y_ft': orig_det.get('physical_y_ft'),
+                        'coordinate_status': orig_det.get('coordinate_status', 'SUCCESS'),
+                        'physical_corners': orig_det.get('physical_corners'),
+                        'real_center': orig_det.get('real_center')
+                    })
+                    logger.debug(f"[DEEPSORT] Camera {camera_id}: Preserved coordinates for track {track.track_id}: ({detection.get('physical_x_ft')}, {detection.get('physical_y_ft')})")
+                else:
+                    # No original detection available
+                    detection.update({
+                        'physical_x_ft': None,
+                        'physical_y_ft': None,
+                        'coordinate_status': 'NO_ORIGINAL',
+                        'physical_corners': None,
+                        'real_center': None
+                    })
+                    logger.warning(f"[DEEPSORT] Camera {camera_id}: No original detection for track {track.track_id} (index {track_index})")
+
                 # DEBUG: Log final detection format
-                logger.debug(f"[DEEPSORT_DETECTION] Camera {camera_id}: {detection['global_id']} -> bbox={detection['bbox']}, area={detection['area']}")
+                logger.debug(f"[DEEPSORT_DETECTION] Camera {camera_id}: {detection['global_id']} -> bbox={detection['bbox']}, coords=({detection.get('physical_x_ft')}, {detection.get('physical_y_ft')})")
 
                 final_detections.append(detection)
         return final_detections
@@ -270,7 +296,7 @@ class ParallelPipelineSystem:
                 logger.debug(f"[DEEPSORT] Camera {camera_id}: No detections to track, updating with empty list")
                 # Still update tracker to age existing tracks
                 tracks = self.deepsort_trackers[camera_id].update_tracks([], frame=frame)
-                final_detections = self._convert_from_deepsort_format(tracks, camera_id)
+                final_detections = self._convert_from_deepsort_format(tracks, camera_id, detections)
                 return final_detections
 
             # Convert to DeepSORT format
@@ -279,8 +305,8 @@ class ParallelPipelineSystem:
             # Update tracks
             tracks = self.deepsort_trackers[camera_id].update_tracks(deepsort_dets, frame=frame)
 
-            # Convert back to our format
-            final_detections = self._convert_from_deepsort_format(tracks, camera_id)
+            # Convert back to our format, preserving original detection data
+            final_detections = self._convert_from_deepsort_format(tracks, camera_id, detections)
 
             logger.info(f"[DEEPSORT_DEBUG] Camera {camera_id}: Final pipeline result: {len(final_detections)} detections going to database")
             logger.debug(f"[DEEPSORT] Camera {camera_id}: Tracked {len(final_detections)} objects from {len(detections)} detections")
@@ -294,35 +320,23 @@ class ParallelPipelineSystem:
         """Safe tracking with fallback to SIFT"""
         if self.use_deepsort:
             try:
-                # ✅ CRITICAL FIX: Apply fisheye correction first (same as SIFT)
-                processed_frame = frame.copy()
-                processed_frame = processor.fisheye_corrector.correct(processed_frame)
-
-                # Resize if too large (same as SIFT)
-                height, width = processed_frame.shape[:2]
-                if width > 1600:
-                    scale = 1600 / width
-                    new_width = int(width * scale)
-                    new_height = int(height * scale)
-                    processed_frame = cv2.resize(processed_frame, (new_width, new_height))
+                # ✅ CRITICAL FIX: Frame is already fisheye-corrected AND resized by camera thread!
+                # No additional processing needed - use frame as-is
+                processed_frame = frame
 
                 # Use DeepSORT tracking (now with empty detection handling)
                 tracked_detections = self._deepsort_tracking(camera_id, detections, processed_frame)
 
-                # ✅ ADD MISSING PROCESSING STEPS (same as SIFT):
-                # Step 1: Physical coordinate translation using PROCESSED frame dimensions
-                frame_height, frame_width = processed_frame.shape[:2]  # ✅ FIXED: Use processed frame dimensions
-                tracked_detections = processor.translate_to_physical_coordinates(
-                    tracked_detections, frame_width, frame_height
-                )
+                # ✅ CRITICAL FIX: Physical coordinates are ALREADY translated in main pipeline!
+                # Do NOT translate again - this was causing double transformation!
 
-                # Step 2: Color extraction using PROCESSED frame
+                # Step 2: Color extraction using PROCESSED frame (coordinates match processed frame)
                 for detection in tracked_detections:
                     try:
                         # Extract image region for color analysis using PROCESSED frame
                         bbox = detection['bbox']
                         x1, y1, x2, y2 = bbox
-                        image_region = processed_frame[y1:y2, x1:x2]  # ✅ FIXED: Use processed frame
+                        image_region = processed_frame[y1:y2, x1:x2]  # ✅ FIXED: Use processed frame with matching coordinates
 
                         # Extract dominant color from detected object (same as SIFT)
                         color_info = processor.color_extractor.extract_dominant_color(image_region)
