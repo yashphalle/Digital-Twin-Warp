@@ -5,11 +5,15 @@ Uses per-camera queues to ensure fair frame processing across all cameras
 """
 
 import logging
+import os
 import threading
 import time
 import torch
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List
+
+# Set CUDA memory allocation configuration to avoid fragmentation
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 from .per_camera_queue_manager import PerCameraQueueManager
 
 logger = logging.getLogger(__name__)
@@ -59,21 +63,14 @@ class PerCameraDetectionThreadPool:
         active_cameras = sorted(self.queue_manager.active_cameras)  # Ensure consistent ordering
         worker_camera_map = {}
 
-        # Initialize empty lists for each worker
+        # Simple 1:1 assignment (Worker 0 → Camera 1, Worker 1 → Camera 2, etc.)
         for worker_id in range(self.num_workers):
-            worker_camera_map[worker_id] = []
-
-        # Distribute cameras evenly across workers using round-robin
-        for i, camera_id in enumerate(active_cameras):
-            worker_id = i % self.num_workers
-            worker_camera_map[worker_id].append(camera_id)
-
-        # Log assignments
-        for worker_id, camera_list in worker_camera_map.items():
-            if camera_list:
-                logger.info(f"🎯 Worker {worker_id} assigned to Cameras {camera_list} ({len(camera_list)} cameras)")
+            if worker_id < len(active_cameras):
+                camera_id = active_cameras[worker_id]  # Get single camera ID (not list)
+                worker_camera_map[worker_id] = camera_id  # Assign single camera ID
+                logger.info(f"🎯 Worker {worker_id} assigned to Camera {camera_id}")
             else:
-                logger.warning(f"⚠️ Worker {worker_id} has no camera assignments")
+                logger.warning(f"⚠️ Worker {worker_id} has no camera assignment (only {len(active_cameras)} cameras available)")
 
         return worker_camera_map
 
@@ -99,15 +96,9 @@ class PerCameraDetectionThreadPool:
                     # Initialize detector for this worker with GPU optimization
                     detector = CPUSimplePalletDetector()
 
-                    # GPU OPTIMIZATION: Reduce memory per model
-                    if hasattr(detector, 'model') and detector.model is not None:
-                        # Use mixed precision (FP16) to halve memory usage
-                        detector.model = detector.model.half()
-                        # Set memory fraction per worker
-                        torch.cuda.set_per_process_memory_fraction(0.08, device=gpu_id)  # ~8% per worker
-                        # Clear cache before loading
-                        torch.cuda.empty_cache()
-                        logger.info(f"🔧 Worker {worker_id}: GPU optimizations applied")
+                    # GPU OPTIMIZATION: Clear cache only (remove memory fraction limit)
+                    torch.cuda.empty_cache()
+                    logger.info(f"🔧 Worker {worker_id}: GPU cache cleared")
                     
                     # Create dedicated CUDA stream for this worker
                     cuda_stream = torch.cuda.Stream(device=device)
@@ -173,6 +164,7 @@ class PerCameraDetectionThreadPool:
 
         # GPU WARM-UP: Run dummy inference to initialize CUDA contexts
         try:
+            import numpy as np  # Add missing import
             dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
             _ = detector.detect_pallets(dummy_frame)
             logger.info(f"🔥 Worker {worker_id}: GPU warm-up completed")
