@@ -10,7 +10,7 @@ import time
 import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
-from .queue_manager import FrameData, QueueManager
+from queue_manager import FrameData, QueueManager
 
 logger = logging.getLogger(__name__)
 
@@ -165,32 +165,7 @@ class PerCameraQueueManager(QueueManager):
                 
         # No frames available from any camera
         return None
-
-    def get_frame_from_dedicated_camera(self, camera_id: int, timeout: float = 1.0) -> Optional[FrameData]:
-        """
-        DEDICATED: Get frame from specific camera queue only
-        Used by dedicated workers (Worker 0 → Camera 1, Worker 1 → Camera 2, etc.)
-        """
-        if camera_id not in self.camera_detection_queues:
-            logger.error(f"❌ Camera {camera_id} not found in detection queues")
-            return None
-
-        try:
-            camera_queue = self.camera_detection_queues[camera_id]
-            frame_data = camera_queue.get(timeout=timeout)
-
-            # Update statistics
-            with self._stats_lock:
-                self.stats['frames_processed'] += 1
-                self.stats['per_camera_stats'][camera_id]['frames_processed'] += 1
-
-            logger.debug(f"[DEDICATED] ✅ Got frame from Camera {camera_id}")
-            return frame_data
-
-        except queue.Empty:
-            logger.debug(f"[DEDICATED] Camera {camera_id} queue empty")
-            return None
-
+    
     def get_camera_frame_any_available(self, timeout: float = 1.0) -> Optional[FrameData]:
         """
         Get frame from any camera that has frames available

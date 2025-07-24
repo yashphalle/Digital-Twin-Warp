@@ -16,22 +16,26 @@ logger = logging.getLogger(__name__)
 
 class PerCameraDetectionThreadPool:
     """
-    Manages pool of GPU detection threads with per-camera queue support
-    Ensures fair processing across all cameras using round-robin selection
+    DEDICATED Detection thread pool with 1:1 worker-to-camera assignment
+    Worker 0 → Camera 1, Worker 1 → Camera 2, etc.
+    Eliminates round-robin overhead for maximum GPU utilization
     """
     
     def __init__(self, num_workers: int = 3, queue_manager: PerCameraQueueManager = None):
         self.num_workers = num_workers
         self.queue_manager = queue_manager
         self.running = False
-        
+
         # Thread pool for detection workers
         self.detection_pool = ThreadPoolExecutor(max_workers=num_workers, thread_name_prefix="PerCameraDetection")
-        
+
+        # DEDICATED: Create 1:1 worker-to-camera mapping
+        self.worker_camera_map = self._create_worker_camera_mapping()
+
         # GPU context management
         self.gpu_contexts = []
         self._initialize_gpu_contexts()
-        
+
         # Performance tracking with per-camera stats
         self.detection_stats = {
             'total_detections': 0,
@@ -42,9 +46,28 @@ class PerCameraDetectionThreadPool:
             } if queue_manager else {}
         }
         self._stats_lock = threading.Lock()
-        
-        logger.info(f"✅ Per-Camera Detection Thread Pool initialized with {num_workers} workers")
+
+        logger.info(f"✅ Dedicated Per-Camera Detection Thread Pool initialized with {num_workers} workers")
+        logger.info(f"📊 Worker-Camera assignments: {self.worker_camera_map}")
         logger.info(f"📊 Tracking detections for cameras: {list(self.detection_stats['per_camera_detections'].keys())}")
+
+    def _create_worker_camera_mapping(self):
+        """Create 1:1 worker-to-camera mapping (Worker 0 → Camera 1, Worker 1 → Camera 2, etc.)"""
+        if not self.queue_manager or not self.queue_manager.active_cameras:
+            return {}
+
+        active_cameras = sorted(self.queue_manager.active_cameras)  # Ensure consistent ordering
+        worker_camera_map = {}
+
+        for worker_id in range(self.num_workers):
+            if worker_id < len(active_cameras):
+                camera_id = active_cameras[worker_id]  # Worker 0 → Camera 1, Worker 1 → Camera 2, etc.
+                worker_camera_map[worker_id] = camera_id
+                logger.info(f"🎯 Worker {worker_id} assigned to Camera {camera_id}")
+            else:
+                logger.warning(f"⚠️ Worker {worker_id} has no camera assignment (only {len(active_cameras)} cameras available)")
+
+        return worker_camera_map
 
     def _initialize_gpu_contexts(self):
         """Initialize GPU contexts for each worker"""
@@ -98,36 +121,44 @@ class PerCameraDetectionThreadPool:
             raise
 
     def start_detection_workers(self):
-        """Start all detection worker threads"""
+        """Start all DEDICATED detection worker threads"""
         self.running = True
-        
+
         # Submit worker tasks to thread pool
         for worker_id in range(self.num_workers):
-            future = self.detection_pool.submit(self._per_camera_detection_worker, worker_id)
-            logger.info(f"🚀 Started per-camera detection worker {worker_id}")
+            assigned_camera = self.worker_camera_map.get(worker_id)
+            if assigned_camera:
+                future = self.detection_pool.submit(self._per_camera_detection_worker, worker_id)
+                logger.info(f"🚀 Started DEDICATED worker {worker_id} for Camera {assigned_camera}")
+            else:
+                logger.warning(f"⚠️ Skipping worker {worker_id} - no camera assigned")
 
     def _per_camera_detection_worker(self, worker_id: int):
         """
-        Worker function for detection threads with per-camera queue support
-        Uses round-robin frame selection to ensure fair camera processing
+        DEDICATED worker function - each worker processes only its assigned camera
+        Worker 0 → Camera 1, Worker 1 → Camera 2, etc.
         """
         context = self.gpu_contexts[worker_id]
         detector = context['detector']
-        
-        logger.info(f"✅ Per-camera detection worker {worker_id} started on {context['device']}")
-        
-        processed_cameras = set()  # Track which cameras this worker has processed
-        
+
+        # Get assigned camera for this worker
+        assigned_camera_id = self.worker_camera_map.get(worker_id)
+        if assigned_camera_id is None:
+            logger.error(f"❌ Worker {worker_id}: No camera assigned, exiting")
+            return
+
+        logger.info(f"✅ DEDICATED worker {worker_id} started on {context['device']} for Camera {assigned_camera_id}")
+
         while self.running:
             try:
-                # Get frame using round-robin selection across cameras
-                frame_data = self.queue_manager.get_camera_frame_round_robin(timeout=1.0)
+                # Get frame from dedicated camera queue only
+                frame_data = self.queue_manager.get_frame_from_dedicated_camera(assigned_camera_id, timeout=1.0)
                 if frame_data is None:
-                    logger.debug(f"🔍 Worker {worker_id}: No frames available from any camera")
+                    logger.debug(f"🔍 Worker {worker_id}: No frame from Camera {assigned_camera_id}")
                     continue
-                
+
                 camera_id = frame_data.camera_id
-                processed_cameras.add(camera_id)
+                assert camera_id == assigned_camera_id, f"Worker {worker_id} got frame from wrong camera {camera_id}, expected {assigned_camera_id}"
                 
                 # Record start time
                 start_time = time.time()
