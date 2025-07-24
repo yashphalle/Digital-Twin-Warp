@@ -52,20 +52,28 @@ class PerCameraDetectionThreadPool:
         logger.info(f"📊 Tracking detections for cameras: {list(self.detection_stats['per_camera_detections'].keys())}")
 
     def _create_worker_camera_mapping(self):
-        """Create 1:1 worker-to-camera mapping (Worker 0 → Camera 1, Worker 1 → Camera 2, etc.)"""
+        """Create balanced worker-to-cameras mapping (each worker handles multiple cameras)"""
         if not self.queue_manager or not self.queue_manager.active_cameras:
             return {}
 
         active_cameras = sorted(self.queue_manager.active_cameras)  # Ensure consistent ordering
         worker_camera_map = {}
 
+        # Initialize empty lists for each worker
         for worker_id in range(self.num_workers):
-            if worker_id < len(active_cameras):
-                camera_id = active_cameras[worker_id]  # Worker 0 → Camera 1, Worker 1 → Camera 2, etc.
-                worker_camera_map[worker_id] = camera_id
-                logger.info(f"🎯 Worker {worker_id} assigned to Camera {camera_id}")
+            worker_camera_map[worker_id] = []
+
+        # Distribute cameras evenly across workers using round-robin
+        for i, camera_id in enumerate(active_cameras):
+            worker_id = i % self.num_workers
+            worker_camera_map[worker_id].append(camera_id)
+
+        # Log assignments
+        for worker_id, camera_list in worker_camera_map.items():
+            if camera_list:
+                logger.info(f"🎯 Worker {worker_id} assigned to Cameras {camera_list} ({len(camera_list)} cameras)")
             else:
-                logger.warning(f"⚠️ Worker {worker_id} has no camera assignment (only {len(active_cameras)} cameras available)")
+                logger.warning(f"⚠️ Worker {worker_id} has no camera assignments")
 
         return worker_camera_map
 
@@ -88,14 +96,28 @@ class PerCameraDetectionThreadPool:
                     gpu_id = worker_id % num_gpus
                     device = torch.device(f'cuda:{gpu_id}')
                     
-                    # Initialize detector for this worker (same as working system)
+                    # Initialize detector for this worker with GPU optimization
                     detector = CPUSimplePalletDetector()
+
+                    # GPU OPTIMIZATION: Reduce memory per model
+                    if hasattr(detector, 'model') and detector.model is not None:
+                        # Use mixed precision (FP16) to halve memory usage
+                        detector.model = detector.model.half()
+                        # Set memory fraction per worker
+                        torch.cuda.set_per_process_memory_fraction(0.08, device=gpu_id)  # ~8% per worker
+                        # Clear cache before loading
+                        torch.cuda.empty_cache()
+                        logger.info(f"🔧 Worker {worker_id}: GPU optimizations applied")
                     
+                    # Create dedicated CUDA stream for this worker
+                    cuda_stream = torch.cuda.Stream(device=device)
+
                     context = {
                         'worker_id': worker_id,
                         'device': device,
                         'detector': detector,
-                        'gpu_id': gpu_id
+                        'gpu_id': gpu_id,
+                        'cuda_stream': cuda_stream  # Dedicated stream per worker
                     }
                     
                     self.gpu_contexts.append(context)
@@ -149,6 +171,14 @@ class PerCameraDetectionThreadPool:
 
         logger.info(f"✅ DEDICATED worker {worker_id} started on {context['device']} for Camera {assigned_camera_id}")
 
+        # GPU WARM-UP: Run dummy inference to initialize CUDA contexts
+        try:
+            dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            _ = detector.detect_pallets(dummy_frame)
+            logger.info(f"🔥 Worker {worker_id}: GPU warm-up completed")
+        except Exception as e:
+            logger.warning(f"⚠️ Worker {worker_id}: GPU warm-up failed: {e}")
+
         while self.running:
             try:
                 # Get frame from dedicated camera queue only
@@ -162,10 +192,19 @@ class PerCameraDetectionThreadPool:
                 
                 # Record start time
                 start_time = time.time()
-                
-                # Perform GPU detection (SAME method as main.py)
-                detections = detector.detect_pallets(frame_data.frame)
-                
+
+                # OPTIMIZED: Use dedicated CUDA stream for async processing
+                cuda_stream = context.get('cuda_stream')
+                if cuda_stream:
+                    with torch.cuda.stream(cuda_stream):
+                        # Perform GPU detection with dedicated stream
+                        detections = detector.detect_pallets(frame_data.frame)
+                    # Synchronize stream to ensure completion
+                    torch.cuda.synchronize(cuda_stream)
+                else:
+                    # Fallback to regular processing
+                    detections = detector.detect_pallets(frame_data.frame)
+
                 # Record detection time
                 detection_time = time.time() - start_time
                 

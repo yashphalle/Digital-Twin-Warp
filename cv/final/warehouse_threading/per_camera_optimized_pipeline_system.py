@@ -36,7 +36,7 @@ class PerCameraOptimizedPipelineSystem:
         # Initialize PER-CAMERA threading components
         self.queue_manager = PerCameraQueueManager(max_cameras=len(active_cameras), active_cameras=active_cameras)
         self.camera_manager = OptimizedCameraThreadManager(active_cameras, self.queue_manager)
-        self.detection_pool = PerCameraDetectionThreadPool(num_workers=2, queue_manager=self.queue_manager)  # OPTIMIZED: 2 workers for RTX 4050 6GB GPU
+        self.detection_pool = PerCameraDetectionThreadPool(num_workers=11, queue_manager=self.queue_manager)  # DEDICATED: 11 workers for 11 cameras (1:1)
 
         # NEW: Per-camera processing threads (copied from parallel_pipeline_system.py)
         self.processing_threads = {}
