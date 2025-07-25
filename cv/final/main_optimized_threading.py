@@ -23,7 +23,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(utf8_stdout),
-        logging.FileHandler('optimized_threading.log', encoding='utf-8')
+        # logging.FileHandler('optimized_threading.log', encoding='utf-8')
     ]
 )
 
@@ -77,8 +77,8 @@ def main():
 
     # GUI Configuration
     ENABLE_GUI = not args.no_gui
-    ACTIVE_CAMERAS = [1,2,3,4,5,6,7,8,9,10,11]
-    GUI_CAMERAS = [] if ENABLE_GUI else []
+    ACTIVE_CAMERAS = [7]
+    GUI_CAMERAS = [7] if ENABLE_GUI else []
 
     logger.info("🚀 OPTIMIZED WAREHOUSE THREADING SYSTEM WITH GUI")
     logger.info("=" * 80)

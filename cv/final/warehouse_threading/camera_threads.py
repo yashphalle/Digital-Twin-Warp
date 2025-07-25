@@ -20,7 +20,7 @@ sys.path.insert(0, parent_dir)
 sys.path.insert(0, grandparent_dir)
 
 from modules.camera_manager import CPUCameraManager
-from fisheye_corrector import OptimizedFisheyeCorrector
+from modules.fisheye_corrector import OptimizedFisheyeCorrector
 
 # Import configs using absolute path
 import importlib.util

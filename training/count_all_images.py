@@ -81,16 +81,8 @@ def count_all_images():
         print(f"   Difference: {abs(total_raw - total_corrected)} images")
     
     # Upload verification
-    print(f"\n📤 UPLOAD VERIFICATION:")
-    print(f"   Script found: 1227 images")
-    print(f"   Corrected count: {total_corrected}")
     
-    if total_corrected == 1227:
-        print(f"   ✅ CONFIRMED: Upload script is using corrected images")
-    elif total_raw + total_corrected == 1227:
-        print(f"   ⚠️ WARNING: Upload script might be using mixed images")
-    else:
-        print(f"   ❓ UNCLEAR: Upload count doesn't match any category")
+
     
     return total_raw, total_corrected, camera_breakdown
 
@@ -102,18 +94,9 @@ def main():
     total_raw, total_corrected, breakdown = count_all_images()
     
     print(f"\n" + "=" * 60)
-    print(f"🎯 CONCLUSION:")
     
-    if total_corrected == 1227:
-        print(f"✅ VERIFIED: Upload script is correctly using fisheye-corrected images")
-        print(f"   - Found {total_corrected} corrected images")
-        print(f"   - Upload script found 1227 images")
-        print(f"   - Perfect match!")
-    else:
-        print(f"⚠️ NEEDS INVESTIGATION:")
-        print(f"   - Corrected images: {total_corrected}")
-        print(f"   - Upload script found: 1227")
-        print(f"   - Difference: {abs(total_corrected - 1227)}")
+
+       
 
 if __name__ == "__main__":
     main()
