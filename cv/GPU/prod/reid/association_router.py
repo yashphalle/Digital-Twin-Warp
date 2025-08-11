@@ -134,8 +134,19 @@ class AssociationRouter(threading.Thread):
                 # Update RAM continuity
                 self.ram_map[(cid, yid)] = gid
 
-                # Forward to DB
-                self._forward_db(cid, [{**r, 'global_id': gid}], ts)
+                # Bind resolved global id back into orchestrator if available
+                try:
+                    bind = getattr(self.tracker_manager, 'bind_global_id', None)
+                    if callable(bind) and yid is not None:
+                        bind(cid, yid, int(gid))
+                except Exception:
+                    pass
+
+                # Forward to DB, mapping similarity -> similarity_score if present
+                db_msg = {**r, 'global_id': gid}
+                if 'similarity' in db_msg and 'similarity_score' not in db_msg:
+                    db_msg['similarity_score'] = float(db_msg.pop('similarity'))
+                self._forward_db(cid, [db_msg], ts)
 
                 # Enqueue Redis upsert with embedding
                 try:

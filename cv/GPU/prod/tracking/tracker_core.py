@@ -37,9 +37,9 @@ def iou(b1: np.ndarray, b2: np.ndarray) -> float:
 
 
 def linear_assign(cost: np.ndarray, thresh: float) -> Tuple[List[Tuple[int,int]], List[int], List[int]]:
-    # Simple greedy matching to keep it light; replace with Hungarian if needed
+    # Simple greedy matching to keep it light
     M, N = cost.shape
-    matches = []
+    matches: List[Tuple[int,int]] = []
     used_rows = set()
     used_cols = set()
     order = np.argsort(cost, axis=None)
@@ -58,7 +58,13 @@ def linear_assign(cost: np.ndarray, thresh: float) -> Tuple[List[Tuple[int,int]]
 
 
 def associate(detections: List[List[float]], state: TrackerState, match_thresh: float = 0.5,
-              min_hits: int = 3, max_age: int = 30, fuse_score: bool = True) -> Tuple[List[Track], List[int]]:
+              min_hits: int = 3, max_age: int = 30, fuse_score: bool = True,
+              app_sim: Optional[np.ndarray] = None, wiou: float = 0.7, wapp: float = 0.3) -> Tuple[List[Track], List[int]]:
+    """Associate detections to tracks.
+    - IoU gating at match_thresh
+    - If app_sim provided (tracks x dets), use fused cost = wiou*(1-IoU) + wapp*(1-cosine)
+    - Otherwise, use cost = 1 - IoU
+    """
     # Predict step: age and time_since_update
     for t in state.tracks:
         t.age += 1
@@ -67,13 +73,24 @@ def associate(detections: List[List[float]], state: TrackerState, match_thresh: 
     dets = np.array(detections, dtype=float) if detections else np.zeros((0,4), dtype=float)
     tracks = state.tracks
 
-    # Build IoU (distance = 1 - IoU)
+    # Build IoU matrix and base cost
     if len(dets) and len(tracks):
-        cost = np.zeros((len(tracks), len(dets)), dtype=float)
+        iou_mat = np.zeros((len(tracks), len(dets)), dtype=float)
         for i, tr in enumerate(tracks):
             for j, d in enumerate(dets):
-                cost[i, j] = 1.0 - iou(tr.bbox, d)
-        matches, um_tr, um_dt = linear_assign(cost, 1.0 - match_thresh)
+                iou_mat[i, j] = iou(tr.bbox, d)
+        # Gate by IoU
+        allowed = (iou_mat >= match_thresh)
+        base_cost = 1.0 - iou_mat
+        if app_sim is not None and app_sim.shape == iou_mat.shape:
+            app_sim_clipped = np.clip(app_sim, 0.0, 1.0)
+            cost = wiou * base_cost + wapp * (1.0 - app_sim_clipped)
+        else:
+            cost = base_cost
+        # Disallow pairs below IoU gate by setting very high cost
+        cost = np.where(allowed, cost, 1e6)
+        # Use greedy on fused cost
+        matches, um_tr, um_dt = linear_assign(cost, 1e5)
     else:
         matches, um_tr, um_dt = [], list(range(len(tracks))), list(range(len(dets)))
 

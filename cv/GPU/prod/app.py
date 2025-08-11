@@ -205,7 +205,7 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
         detector = DetectorWorker(cfg=cfg, latest_store=store, output_queue=det_out)
         detector.start()
         # Start orchestrator to consume detections and emit tracks
-        orchestrator = TrackingOrchestrator(cfg=cfg, det_queue=det_out, out_queue=trk_out, camera_ids=cfg.active_cameras)
+        orchestrator = TrackingOrchestrator(cfg=cfg, det_queue=det_out, out_queue=trk_out, camera_ids=cfg.active_cameras, latest_store=store)
         orchestrator.start()
         tracker_manager = orchestrator  # for router compatibility
     else:
