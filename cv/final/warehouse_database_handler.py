@@ -94,8 +94,8 @@ class WarehouseDatabaseHandler:
         global_id = detection.get('global_id')
         tracking_status = detection.get('tracking_status', 'unknown')
 
-        logger.debug(f"🔍 Attempting to save: Camera {camera_id}, Global ID {global_id}, Status: {tracking_status}")
-        logger.info(f"🎨 Color data in detection: RGB={detection.get('rgb')}, HSV={detection.get('hsv')}, Hex={detection.get('hex')}")
+        # logger.debug(f"🔍 Attempting to save: Camera {camera_id}, Global ID {global_id}, Status: {tracking_status}")
+        # logger.info(f"🎨 Color data in detection: RGB={detection.get('rgb')}, HSV={detection.get('hsv')}, Hex={detection.get('hex')}")
 
         if global_id is None or global_id == -1:
             logger.debug(f"❌ Skipping invalid global ID: {global_id}")

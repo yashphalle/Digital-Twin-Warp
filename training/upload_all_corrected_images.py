@@ -119,12 +119,12 @@ class SimpleRoboflowUploader:
                     self.stats['failed'] += 1
                 
                 # Rate limiting - slower to avoid API limits
-                time.sleep(1.0)  # 1 second between uploads
+                time.sleep(0.2)  # 1 second between uploads
             
             # Longer pause between batches
             if current_batch < total_batches:
                 logger.info(f"⏸️ Batch {current_batch} complete. Pausing 10 seconds...")
-                time.sleep(10)
+                time.sleep(2)
         
         logger.info(f"📊 Upload complete: {self.stats['uploaded']} success, {self.stats['failed']} failed")
         return self.stats

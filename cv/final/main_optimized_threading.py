@@ -93,9 +93,9 @@ def main():
     logger.info("3) 🚀 GPU Detection (Grounding DINO + post_process_grounded_object_detection)")
     logger.info("4) 🚀 CPU Area + Grid Cell Filtering")
     logger.info("5) 🚀 CPU Physical Coordinate Translation")
-    logger.info("6) 🚀 CPU SIFT Feature Matching")
-    logger.info("7) 🚀 CPU Persistent Object IDs")
-    logger.info("8) 🚀 CPU Cross-Frame Tracking & Database")
+    logger.info("6) 🚀 YOLOv8 Built-in Tracking (ByteTrack)")
+    logger.info("7) 🚀 Persistent Object IDs (Track-based)")
+    logger.info("8) 🚀 Cross-Frame Tracking & Database")
     logger.info("=" * 80)
 
     if ENABLE_GUI:

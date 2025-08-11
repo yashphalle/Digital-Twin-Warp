@@ -23,7 +23,7 @@ from PIL import Image, ImageTk
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from cv.configs.config import Config
 from cv.configs.warehouse_config import get_warehouse_config
-from cv.final.fisheye_corrector import OptimizedFisheyeCorrector
+from cv.final.modules.fisheye_corrector import OptimizedFisheyeCorrector
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

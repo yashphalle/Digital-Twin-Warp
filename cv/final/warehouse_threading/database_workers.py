@@ -27,18 +27,18 @@ class DatabaseWorkerPool:
         self.database_workers = {}
         self.database_handlers = {}
         
-        # Performance statistics
+        # Simple statistics
         self.stats = {
-            'saves_per_camera': {camera_id: 0 for camera_id in active_cameras},
-            'errors_per_camera': {camera_id: 0 for camera_id in active_cameras},
-            'avg_save_time_per_camera': {camera_id: [] for camera_id in active_cameras}
+            'total_queued': 0,
+            'total_saved': 0,
+            'total_dropped': 0
         }
         
-        # Initialize per-camera database queues
+        # Initialize per-camera database queues (300 items each for high detection count)
         for camera_id in active_cameras:
-            self.database_queues[camera_id] = queue.Queue(maxsize=20)
+            self.database_queues[camera_id] = queue.Queue(maxsize=300)
         
-        logger.info(f"✅ Database Worker Pool initialized for {len(active_cameras)} cameras")
+        logger.info(f"✅ Async Database: {len(active_cameras)} cameras, 300 queue size each")
 
     def start_workers(self):
         """Start all database workers"""
@@ -79,27 +79,54 @@ class DatabaseWorkerPool:
         logger.info("✅ Database workers stopped")
 
     def queue_database_save(self, camera_id: int, detection: Dict, frame_number: int = None) -> bool:
-        """
-        Queue a database save task for specific camera
-        Returns True if queued successfully, False if queue full
-        """
+        """Queue detection for database save with oldest replacement when full"""
+
         if camera_id not in self.database_queues:
             logger.error(f"No database queue for Camera {camera_id}")
             return False
-            
+
         database_task = {
             'camera_id': camera_id,
             'detection': detection,
             'timestamp': time.time(),
             'frame_number': frame_number
         }
-        
+
         try:
+            # Try normal put first
             self.database_queues[camera_id].put_nowait(database_task)
+            self.stats['total_queued'] += 1
             return True
+
         except queue.Full:
-            logger.warning(f"Database queue full for Camera {camera_id}, dropping detection")
-            return False
+            # Queue is full (300 items) - REPLACE OLDEST
+            try:
+                # Remove oldest detection (FIFO)
+                old_task = self.database_queues[camera_id].get_nowait()
+                old_detection_id = old_task['detection'].get('global_id', 'unknown')
+
+                # Add new detection
+                self.database_queues[camera_id].put_nowait(database_task)
+
+                # Update statistics
+                self.stats['total_dropped'] += 1
+                self.stats['total_queued'] += 1
+
+                # Log replacement
+                new_detection_id = detection.get('global_id', 'unknown')
+                logger.warning(f"[DATABASE] Camera {camera_id}: Queue full, replaced old detection {old_detection_id} with new {new_detection_id}")
+
+                return True
+
+            except queue.Empty:
+                # Race condition: try again
+                try:
+                    self.database_queues[camera_id].put_nowait(database_task)
+                    self.stats['total_queued'] += 1
+                    return True
+                except queue.Full:
+                    logger.error(f"[DATABASE] Camera {camera_id}: Failed to replace, dropping detection {detection.get('global_id')}")
+                    return False
 
     def _database_worker(self, camera_id: int):
         """Database worker for specific camera"""
@@ -110,7 +137,9 @@ class DatabaseWorkerPool:
         self.database_handlers[camera_id] = db_handler
         
         if not db_handler or not db_handler.is_connected():
-            logger.warning(f"[DATABASE] Camera {camera_id}: No database connection, worker will skip saves")
+            logger.error(f"[DATABASE] Camera {camera_id}: No database connection, worker will skip saves")
+        else:
+            logger.info(f"[DATABASE] Camera {camera_id}: Database connection confirmed, ready to save")
         
         while self.running:
             try:
@@ -123,72 +152,50 @@ class DatabaseWorkerPool:
                     
                     # Save to database
                     db_handler.save_detection_to_db(task['camera_id'], task['detection'])
-                    
+
                     save_time = time.time() - save_start
+                    self.stats['total_saved'] += 1
                     
-                    # Update statistics
-                    self.stats['saves_per_camera'][camera_id] += 1
-                    self.stats['avg_save_time_per_camera'][camera_id].append(save_time)
-                    
-                    # Keep only recent save times (last 100)
-                    if len(self.stats['avg_save_time_per_camera'][camera_id]) > 100:
-                        self.stats['avg_save_time_per_camera'][camera_id] = \
-                            self.stats['avg_save_time_per_camera'][camera_id][-100:]
-                    
-                    logger.debug(f"[DATABASE] Camera {camera_id}: Saved detection in {save_time*1000:.1f}ms")
+                    logger.info(f"[DATABASE] Camera {camera_id}: Saved detection {task['detection'].get('global_id', 'unknown')} in {save_time*1000:.1f}ms")
                 else:
-                    logger.debug(f"[DATABASE] Camera {camera_id}: Skipped save (no database connection)")
+                    logger.warning(f"[DATABASE] Camera {camera_id}: Skipped save (no database connection)")
                     
             except queue.Empty:
                 continue  # Timeout, check if still running
             except Exception as e:
                 logger.error(f"[DATABASE] Camera {camera_id} database error: {e}")
-                self.stats['errors_per_camera'][camera_id] += 1
+                import traceback
+                logger.error(f"[DATABASE] Camera {camera_id} traceback: {traceback.format_exc()}")
                 time.sleep(0.1)  # Brief pause on error
 
     def _create_database_handler(self, camera_id: int):
         """Create database handler for specific camera"""
         try:
-            from ..warehouse_database_handler import WarehouseDatabaseHandler
-            return WarehouseDatabaseHandler()
+            logger.info(f"[DATABASE] Camera {camera_id}: Importing WarehouseDatabaseHandler...")
+
+            # Fix import path for worker thread
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+            from warehouse_database_handler import WarehouseDatabaseHandler
+            logger.info(f"[DATABASE] Camera {camera_id}: Creating database handler...")
+            handler = WarehouseDatabaseHandler()
+            logger.info(f"[DATABASE] Camera {camera_id}: Database handler created successfully")
+            return handler
         except Exception as e:
-            logger.error(f"Failed to create database handler for Camera {camera_id}: {e}")
+            logger.error(f"[DATABASE] Camera {camera_id}: Failed to create database handler: {e}")
+            import traceback
+            logger.error(f"[DATABASE] Camera {camera_id}: Traceback: {traceback.format_exc()}")
             return None
 
-    def get_statistics(self) -> Dict:
-        """Get database worker statistics"""
-        stats = {
-            'total_saves': sum(self.stats['saves_per_camera'].values()),
-            'total_errors': sum(self.stats['errors_per_camera'].values()),
-            'per_camera': {}
-        }
-        
+    def get_queue_status(self) -> Dict:
+        """Get simple queue status for monitoring"""
+        status = {}
         for camera_id in self.active_cameras:
-            saves = self.stats['saves_per_camera'][camera_id]
-            errors = self.stats['errors_per_camera'][camera_id]
-            save_times = self.stats['avg_save_time_per_camera'][camera_id]
-            avg_save_time = sum(save_times) / len(save_times) if save_times else 0
-            
-            stats['per_camera'][camera_id] = {
-                'saves': saves,
-                'errors': errors,
-                'avg_save_time_ms': avg_save_time * 1000,
-                'success_rate': saves / (saves + errors) if (saves + errors) > 0 else 0
+            queue_size = self.database_queues[camera_id].qsize()
+            status[camera_id] = {
+                'queue_size': queue_size,
+                'queue_utilization_percent': (queue_size / 300) * 100
             }
-        
-        return stats
-
-    def log_statistics(self):
-        """Log database worker statistics"""
-        stats = self.get_statistics()
-        
-        logger.info("[DATABASE] DATABASE WORKER STATISTICS:")
-        logger.info(f"   Total Saves: {stats['total_saves']}")
-        logger.info(f"   Total Errors: {stats['total_errors']}")
-        
-        for camera_id in self.active_cameras:
-            camera_stats = stats['per_camera'][camera_id]
-            logger.info(f"   Camera {camera_id:2d}: {camera_stats['saves']:4d} saves | "
-                       f"{camera_stats['errors']:2d} errors | "
-                       f"{camera_stats['avg_save_time_ms']:5.1f}ms avg | "
-                       f"{camera_stats['success_rate']*100:5.1f}% success")
+        return status

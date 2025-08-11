@@ -54,7 +54,7 @@ class OptimizedCameraThreadManager(CameraThreadManager):
         frame_number = 0
         processed_frames = 0
         skipped_frames = 0
-        FRAME_SKIP = 5  # Process every 5th frame (4x more frames for better GPU utilization)
+        FRAME_SKIP = 10  # DISABLED: Process every frame (no frame skipping)
 
         while self.running:
             try:

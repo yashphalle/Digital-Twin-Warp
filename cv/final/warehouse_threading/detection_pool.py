@@ -17,7 +17,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from modules.detector import CPUSimplePalletDetector
+from modules.yolo_detector import YOLOv8PalletDetector
+from config.yolo_config import get_detection_config
 from .queue_manager import QueueManager, FrameData
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 class DetectionThreadPool:
     """Manages pool of GPU detection threads"""
     
-    def __init__(self, num_workers: int = 3, queue_manager: QueueManager = None):
+    def __init__(self, num_workers: int = 1, queue_manager: QueueManager = None):
         self.num_workers = num_workers
         self.queue_manager = queue_manager
         self.running = False
@@ -54,8 +55,14 @@ class DetectionThreadPool:
             
         for worker_id in range(self.num_workers):
             try:
-                # Create detector instance for this worker (REUSE existing module)
-                detector = CPUSimplePalletDetector()
+                # Create YOLOv8 detector instance for this worker using config
+                config = get_detection_config()
+                device = f"cuda:{worker_id % torch.cuda.device_count()}" if torch.cuda.is_available() else "cpu"
+                detector = YOLOv8PalletDetector(
+                    model_path=config['model_path'],
+                    device=device,
+                    conf_threshold=config['confidence_threshold']
+                )
                 
                 context = {
                     'worker_id': worker_id,
@@ -95,13 +102,13 @@ class DetectionThreadPool:
                     continue
 
                 # DEBUG: Log which camera is being processed
-                logger.info(f"🔍 Worker {worker_id}: Processing Camera {frame_data.camera_id} frame {frame_data.frame_number}")
+                #logger.info(f"🔍 Worker {worker_id}: Processing Camera {frame_data.camera_id} frame {frame_data.frame_number}")
 
                 # Record start time
                 start_time = time.time()
                 
-                # Perform GPU detection (SAME method as main.py)
-                detections = detector.detect_pallets(frame_data.frame)
+                # Perform GPU detection with tracking (NEW: YOLOv8 tracking enabled)
+                detections = detector.detect_pallets_with_tracking(frame_data.frame)
                 
                 # Record detection time
                 detection_time = time.time() - start_time
@@ -134,7 +141,7 @@ class DetectionThreadPool:
                 context['total_processed'] += 1
                 context['last_activity'] = time.time()
                 
-                logger.debug(f"🔍 Worker {worker_id}: Processed frame from camera {frame_data.camera_id} in {detection_time:.3f}s")
+                #logger.debug(f"🔍 Worker {worker_id}: Processed frame from camera {frame_data.camera_id} in {detection_time:.3f}s")
                 
             except Exception as e:
                 logger.error(f"❌ Detection worker {worker_id} error: {e}")
