@@ -42,6 +42,9 @@ class GridGUIThread(threading.Thread):
         self._last_tracks: Dict[int, List[Dict]] = {}
         self._lock = threading.Lock()
 
+        # Signal to repaint on new pipeline message (sync GUI to pipeline cadence)
+        self._tick_event = threading.Event()
+
         # Simple per-camera FPS estimation (EMA on capture timestamps)
         self._last_ts_map: Dict[int, float] = {}
         self._fps_map: Dict[int, float] = {}
@@ -65,6 +68,11 @@ class GridGUIThread(threading.Thread):
                 self._last_tracks[cid] = msg.get('tracks', [])
             if 'sys_fps' in msg:
                 self._sys_fps_map[cid] = float(msg.get('sys_fps'))
+        # Signal a new pipeline tick so GUI repaints immediately
+        try:
+            self._tick_event.set()
+        except Exception:
+            pass
 
     def _draw_text(self, img: np.ndarray, text: str, org: Tuple[int, int], color=(0, 255, 0)):
         # outlined text for readability
@@ -188,6 +196,13 @@ class GridGUIThread(threading.Thread):
         self._running = True
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         while self._running:
+            # Wait for the next pipeline tick (new det/track message)
+            try:
+                self._tick_event.wait(timeout=self.period_s)
+                self._tick_event.clear()
+            except Exception:
+                pass
+
             t0 = time.time()
             frames: List[Tuple[int, np.ndarray]] = []
             # Build frames list depending on view mode
@@ -222,10 +237,7 @@ class GridGUIThread(threading.Thread):
             if key != 255:
                 self._handle_keys(key)
 
-            # Rate control
-            elapsed = time.time() - t0
-            sleep_s = max(0.0, self.period_s - elapsed)
-            time.sleep(sleep_s)
+            # No busy rate control needed; we sync to pipeline via event with a small timeout
         try:
             cv2.destroyWindow(self.window_name)
         except Exception:
