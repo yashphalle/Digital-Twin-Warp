@@ -264,11 +264,12 @@ async def get_tracked_objects():
         raise HTTPException(status_code=503, detail="MongoDB not connected to CV system")
     
     try:
-        # Get ALL objects with valid physical coordinates (no time filtering)
-        # Show complete warehouse state - let CV system handle object lifecycle
+        # Get active objects with valid physical coordinates
+        # Active = status in ['new', 'tracked']
         query = {
             "physical_x_ft": {"$exists": True, "$ne": None},
-            "physical_y_ft": {"$exists": True, "$ne": None}
+            "physical_y_ft": {"$exists": True, "$ne": None},
+            "status": {"$in": ["new", "tracked"]}
         }
 
         # Get ALL detections with coordinates, excluding MongoDB _id field
@@ -318,7 +319,9 @@ async def get_tracked_objects():
                     "color_confidence": detection.get("color_confidence"),
                     "extraction_method": detection.get("extraction_method"),
                     # Warp ID metadata
-                    "warp_id_linked_at": detection.get("warp_id_linked_at")
+                    "warp_id_linked_at": detection.get("warp_id_linked_at"),
+                    # Current lifecycle status for frontend filtering
+                    "status": detection.get("status", "tracked"),
                 }
 
                 # Skip objects without valid coordinates

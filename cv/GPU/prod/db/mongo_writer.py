@@ -358,8 +358,9 @@ class MongoWriterThread(threading.Thread):
                                                 'physical_y_ft': common['physical_y_ft'],
                                                 'coordinate_status': common['coordinate_status'],
                                                 'similarity_score': common['similarity_score'],
-
+                                                'status': 'tracked',
                                             },
+                                            '$unset': {'inactive_since': ""},
                                             '$inc': {'times_seen': 1}
                                         }
                                         self._pending_updates.append((filt, update))

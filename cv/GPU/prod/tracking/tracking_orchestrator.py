@@ -221,8 +221,12 @@ class TrackingOrchestrator(threading.Thread):
                                   wapp=getattr(self.cfg, 'wapp', 0.3))
 
             # Build output with camera-prefixed global IDs and ages
+            # Suppress stale tracks: do not emit if missed beyond display_max_missed (default 0)
+            display_max_missed = int(getattr(self.cfg, 'display_max_missed', 0))
             out_tracks = []
             for tr in tracks:
+                if tr.time_since_update > display_max_missed:
+                    continue
                 gid = self.idm[cid].get_global_id(tr.track_id)
                 age = self.idm[cid].get_track_age(gid)
                 out_tracks.append({
