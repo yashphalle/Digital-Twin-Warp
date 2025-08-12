@@ -103,7 +103,7 @@ class CameraTrackerThread(threading.Thread):
             try:
                 if self.output_queue.full():
                     _ = self.output_queue.get_nowait()
-                self.output_queue.put_nowait({'camera_id': self.camera_id, 'tracks': tracks, 'ts': now})
+                self.output_queue.put_nowait({'camera_id': self.camera_id, 'tracks': tracks, 'ts': ts})
             except Exception:
                 pass
 

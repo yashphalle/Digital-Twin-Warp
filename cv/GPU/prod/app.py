@@ -10,6 +10,7 @@ import queue
 import time
 from typing import List
 
+from collections import deque
 from GPU.prod.config.runtime import default_config
 from GPU.prod.buffers.latest_frame_store import LatestFrameStore
 from GPU.prod.capture.camera_worker import CameraWorker
@@ -248,17 +249,54 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
     per_cam = {cid: 0 for cid in cfg.active_cameras}
     max_q = 0
 
+    # System Processing FPS (post-tracker) sliding window metrics
+    system_window_s = float(getattr(cfg, 'system_fps_window_s', 10.0))
+    system_log_interval_s = float(getattr(cfg, 'system_fps_log_interval_s', 2.0))
+    sys_last_log = start
+    per_cam_post_times = {cid: deque() for cid in cfg.active_cameras}  # deque of completion timestamps
+    per_cam_lat = {cid: deque() for cid in cfg.active_cameras}         # deque of (completion_ts, latency_ms)
+
+    def _prune_deques(now_ts: float):
+        for cid in cfg.active_cameras:
+            dq = per_cam_post_times[cid]
+            while dq and (now_ts - dq[0]) > system_window_s:
+                dq.popleft()
+            lq = per_cam_lat[cid]
+            while lq and (now_ts - lq[0][0]) > system_window_s:
+                lq.popleft()
+
+    def _percentiles(values, ps=(50, 95)):
+        if not values:
+            return {p: 0.0 for p in ps}
+        vals = sorted(values)
+        out = {}
+        n = len(vals)
+        for p in ps:
+            # nearest-rank method
+            k = max(1, int(round(p/100.0 * n)))
+            out[p] = float(vals[k-1])
+        return out
+
     try:
         while time.time() - start < duration_s:
             try:
                 msg = trk_out.get(timeout=0.5)
                 total_msgs += 1
+                now_ts = time.time()
                 cid = msg['camera_id']
                 per_cam[cid] = per_cam.get(cid, 0) + 1
-                # Attach per-camera system FPS (computed over elapsed) for GUI display
-                elapsed_now = max(1e-6, time.time() - start)
-                sys_fps = per_cam[cid] / elapsed_now
-                msg['sys_fps'] = sys_fps
+
+                # Record post-tracker completion and latency using capture ts carried as msg['ts']
+                per_cam_post_times[cid].append(now_ts)
+                cap_ts = float(msg.get('ts', now_ts))
+                lat_ms = max(0.0, (now_ts - cap_ts) * 1000.0)
+                per_cam_lat[cid].append((now_ts, lat_ms))
+
+                # Prune to window and compute sliding-window SystemFPS for this camera for GUI
+                _prune_deques(now_ts)
+                sys_fps_cam = len(per_cam_post_times[cid]) / max(1e-6, system_window_s)
+                msg['sys_fps'] = sys_fps_cam
+
                 # Route to Redis ReID pipeline (if enabled) else direct to DB
                 try:
                     if router is not None:
@@ -274,12 +312,26 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
                     gui.push_msg(msg)
             except queue.Empty:
                 pass
+            now_loop = time.time()
             max_q = max(max_q, trk_out.qsize())
-            if time.time() - last >= cfg.log_interval_s:
-                elapsed = time.time() - start
+            # Existing periodic summary
+            if now_loop - last >= cfg.log_interval_s:
+                elapsed = now_loop - start
                 rate = total_msgs / max(1e-6, elapsed)
                 logger.info(f"elapsed={elapsed:.1f}s total_msgs={total_msgs} rate={rate:.1f}/s q={trk_out.qsize()} max_q={max_q}")
-                last = time.time()
+                last = now_loop
+            # New: System Processing FPS and latency log
+            if now_loop - sys_last_log >= system_log_interval_s:
+                _prune_deques(now_loop)
+                per_cam_sysfps = {cid: (len(per_cam_post_times[cid]) / max(1e-6, system_window_s)) for cid in cfg.active_cameras}
+                total_sysfps = sum(per_cam_sysfps.values())
+                per_cam_p = {}
+                for cid in cfg.active_cameras:
+                    vals = [v for _, v in per_cam_lat[cid]]
+                    pct = _percentiles(vals)
+                    per_cam_p[cid] = {'p50_ms': round(pct[50], 1), 'p95_ms': round(pct[95], 1)}
+                logger.info(f"SystemFPS(post-tracker, window={system_window_s:.0f}s): total={total_sysfps:.2f} per_cam={per_cam_sysfps} lat_ms={per_cam_p}")
+                sys_last_log = now_loop
     finally:
         # Stop tracking path
         if getattr(cfg, 'use_batched_tracking', False):
@@ -318,18 +370,31 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
     elapsed = max(1e-6, time.time() - start)
     total_fps = total_msgs / elapsed
 
-    # Per-camera rates at the app dequeue point
+    # Per-camera rates at the app dequeue point (DB/event rate)
     per_cam_fps = {cid: (cnt / elapsed) for cid, cnt in per_cam.items()}
+
+    # Compute final System Processing FPS (post-tracker) over the sliding window and latency percentiles
+    now_final = time.time()
+    _prune_deques(now_final)
+    per_cam_sysfps_final = {cid: (len(per_cam_post_times[cid]) / max(1e-6, system_window_s)) for cid in cfg.active_cameras}
+    total_sysfps_final = sum(per_cam_sysfps_final.values())
+    per_cam_lat_p_final = {}
+    for cid in cfg.active_cameras:
+        vals = [v for _, v in per_cam_lat[cid]]
+        pct = _percentiles(vals)
+        per_cam_lat_p_final[cid] = {'p50_ms': round(pct[50], 1), 'p95_ms': round(pct[95], 1)}
 
     # Compose a structured log with ingest/detect/track where available
     logger.info("==== FINAL PERFORMANCE REPORT ====")
     logger.info(f"Duration: {elapsed:.1f}s | Cameras: {cfg.active_cameras}")
     logger.info(f"App dequeue FPS (total): {total_fps:.2f}")
     logger.info(f"App dequeue FPS (per camera): {per_cam_fps}")
+    logger.info(f"SystemFPS(post-tracker, window={system_window_s:.0f}s): total={total_sysfps_final:.2f} per_cam={per_cam_sysfps_final} lat_ms={per_cam_lat_p_final}")
     logger.info("Notes: Ingest/Detection/Tracking FPS are logged during the run per component.\n"
                 "- Ingest: CameraWorker[CID] ingest_fps=...\n"
                 "- Detection: DetectorWorker total_det_msgs_per_s=... (or per_cam via counts)\n"
                 "- Tracking: CameraTracker[CID] trk_fps=...\n"
+                "- System Processing FPS: frames exiting tracker regardless of DB gating\n"
                 "- End-to-end (DB): MongoWriter E2E_system_fps=... (frames reaching DB stage)")
 
     summary = {

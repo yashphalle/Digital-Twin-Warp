@@ -58,6 +58,10 @@ class RuntimeConfig:
     log_level: str = 'INFO'  # 'DEBUG' to enable more logs
     log_interval_s: float = 2.0  # periodic summary
 
+    # System Processing FPS (post-tracker) reporting
+    system_fps_window_s: float = 10.0  # sliding window length
+    system_fps_log_interval_s: float = 2.0  # log cadence for SystemFPS
+
 
 # Simple helper to build a default config
 
