@@ -62,6 +62,19 @@ class AssociationRouter(threading.Thread):
                 # Fast path: forward to DB and update Redis async
                 self._forward_db(cid, [t], ts)
                 self._enqueue_redis_update(cid, gid, bbox, ts)
+                # One-time feature fill: if Redis lacks feature for this gid and track is mature (age>=5), enqueue extraction
+                try:
+                    needs_feat = False
+                    if self.redis and self.redis.connected():
+                        vals = self.redis.hmget_entity(gid, [b'feature'])
+                        needs_feat = not (vals and vals[0])
+                    if needs_feat and age >= 5:
+                        item = {'camera_id': cid, 'track_id': yid, 'global_id': gid, 'bbox': bbox}
+                        if self.feature_in_q.full():
+                            _ = self.feature_in_q.get_nowait()
+                        self.feature_in_q.put_nowait(item)
+                except Exception:
+                    pass
             else:
                 # New or unknown mapping: push to feature extraction
                 try:

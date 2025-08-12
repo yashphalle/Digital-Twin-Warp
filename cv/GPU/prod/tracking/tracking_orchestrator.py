@@ -96,80 +96,116 @@ class TrackingOrchestrator(threading.Thread):
                 det_confs.append(float(d.get('confidence', 0.0)))
                 det_classes.append(d.get('class'))
 
-            # Appearance-by-default: embed all detections for this camera (batched)
+            # On-demand appearance: only for ambiguous matches
             app_sim = None
-            if self.app_model is not None and det_xyxy and self.latest_store is not None:
+            state = self.states[cid]
+            T = len(state.tracks)
+            D = len(det_xyxy)
+            if self.app_model is not None and det_xyxy and self.latest_store is not None and T > 0 and D > 0:
                 item = self.latest_store.latest(cid)
                 try:
                     if item is not None:
                         frame = item[0]
-                        crops = []
-                        for bb in det_xyxy:
-                            x1,y1,x2,y2 = [int(max(0, v)) for v in bb]
-                            x2 = min(x2, frame.shape[1]-1)
-                            y2 = min(y2, frame.shape[0]-1)
-                            if x2 <= x1 or y2 <= y1:
-                                crops.append(None)
-                                continue
-                            crop = cv2.resize(frame[y1:y2, x1:x2], (224,224), interpolation=cv2.INTER_AREA)
-                            crops.append(crop)
-                        # Batch predict only valid crops
-                        valid_idxs = [i for i,c in enumerate(crops) if c is not None]
-                        if valid_idxs:
-                            imgs = [crops[i] for i in valid_idxs]
-                            res = self.app_model.predict(imgs, device=getattr(self.cfg,'device','cuda:0'), verbose=False)
-                            det_embs = []
-                            for r in res:
-                                probs = getattr(r, 'probs', None)
-                                if probs is None: det_embs.append(None); continue
-                                vec = probs.data
-                                vec = vec.cpu().numpy() if hasattr(vec,'cpu') else np.asarray(vec)
-                                # L2 normalize
-                                norm = np.linalg.norm(vec) + 1e-8
-                                det_embs.append((vec / norm).astype(np.float32))
-                            # Build similarity matrix vs tracks with cached embeddings (refresh every N frames)
-                            state = self.states[cid]
-                            T = len(state.tracks)
-                            D = len(det_xyxy)
-                            app_sim = np.zeros((T,D), dtype=np.float32)
-
-                            # Prepare per-track embeddings: refresh if missing or every embed_refresh_period frames
+                        # Compute IoU matrix for ambiguity analysis
+                        dets_np = np.array(det_xyxy, dtype=np.float32)
+                        iou_mat = np.zeros((T, D), dtype=np.float32)
+                        for i, tr in enumerate(state.tracks):
+                            x1t,y1t,x2t,y2t = tr.bbox.tolist()
+                            a_tr = max(0.0, x2t-x1t) * max(0.0, y2t-y1t)
+                            for j in range(D):
+                                x1d,y1d,x2d,y2d = dets_np[j]
+                                xi1 = max(x1t, x1d); yi1 = max(y1t, y1d)
+                                xi2 = min(x2t, x2d); yi2 = min(y2t, y2d)
+                                w = max(0.0, xi2 - xi1); h = max(0.0, yi2 - yi1)
+                                inter = w*h
+                                a_det = max(0.0, x2d-x1d) * max(0.0, y2d-y1d)
+                                union = a_tr + a_det - inter + 1e-6
+                                iou_mat[i, j] = inter/union
+                        # Find ambiguous tracks
+                        iou_strong = float(getattr(self.cfg, 'iou_strong', 0.70))
+                        iou_conflict_delta = float(getattr(self.cfg, 'iou_conflict_delta', 0.05))
+                        amb_rows = []
+                        cand_cols = set()
+                        topk = int(getattr(self.cfg, 'amb_topk', 3))
+                        for i in range(T):
+                            row = iou_mat[i]
+                            order = np.argsort(row)[::-1]
+                            best = row[order[0]] if D>0 else 0.0
+                            second = row[order[1]] if D>1 else 0.0
+                            if best < iou_strong or (best - second) < iou_conflict_delta:
+                                amb_rows.append(i)
+                                for k in range(min(topk, D)):
+                                    cand_cols.add(int(order[k]))
+                        if amb_rows and cand_cols:
+                            # Build detection crops for candidate columns only
+                            cand_cols = sorted(list(cand_cols))
+                            det_crops = []
+                            det_col_to_idx = {}
+                            for idx_j, j in enumerate(cand_cols):
+                                x1,y1,x2,y2 = [int(max(0, v)) for v in det_xyxy[j]]
+                                x2 = min(x2, frame.shape[1]-1)
+                                y2 = min(y2, frame.shape[0]-1)
+                                if x2 <= x1 or y2 <= y1:
+                                    det_col_to_idx[j] = None
+                                    continue
+                                crop = cv2.resize(frame[y1:y2, x1:x2], (224,224), interpolation=cv2.INTER_AREA)
+                                det_crops.append(crop)
+                                det_col_to_idx[j] = len(det_crops)-1
+                            det_emb_map: Dict[int, np.ndarray] = {}
+                            if det_crops:
+                                res = self.app_model.predict(det_crops, device=getattr(self.cfg,'device','cuda:0'), verbose=False)
+                                for j in cand_cols:
+                                    ridx = det_col_to_idx.get(j)
+                                    if ridx is None: continue
+                                    probs = getattr(res[ridx], 'probs', None)
+                                    if probs is None: continue
+                                    vec = probs.data
+                                    vec = vec.cpu().numpy() if hasattr(vec,'cpu') else np.asarray(vec)
+                                    vec = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
+                                    det_emb_map[j] = vec
+                            # Prepare/refresh track embeddings for ambiguous rows
                             refresh_period = int(getattr(self.cfg, 'embed_refresh_period', 10))
-                            trk_embs: List[np.ndarray | None] = [None]*T
-                            for i, tr in enumerate(state.tracks):
+                            trk_embs: Dict[int, np.ndarray] = {}
+                            trk_crops = []
+                            trk_row_to_idx = {}
+                            for i in amb_rows:
+                                tr = state.tracks[i]
                                 cache = self.trk_cache[cid].get(tr.track_id)
                                 need_refresh = cache is None or (tr.age % max(1, refresh_period) == 0)
                                 if need_refresh:
-                                    # crop from frame using current bbox
                                     x1,y1,x2,y2 = [int(max(0, v)) for v in tr.bbox.tolist()]
                                     x2 = min(x2, frame.shape[1]-1)
                                     y2 = min(y2, frame.shape[0]-1)
                                     if x2 > x1 and y2 > y1:
                                         crop = cv2.resize(frame[y1:y2, x1:x2], (224,224), interpolation=cv2.INTER_AREA)
-                                        # Single predict; could batch later if needed
-                                        r = self.app_model.predict(crop, device=getattr(self.cfg,'device','cuda:0'), verbose=False)
-                                        if r:
-                                            probs = getattr(r[0], 'probs', None)
-                                            if probs is not None:
-                                                vec = probs.data
-                                                vec = vec.cpu().numpy() if hasattr(vec,'cpu') else np.asarray(vec)
-                                                vec = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
-                                                self.trk_cache[cid][tr.track_id] = {'emb': vec}
-                                                trk_embs[i] = vec
+                                        trk_row_to_idx[i] = len(trk_crops)
+                                        trk_crops.append(crop)
                                 else:
-                                    if cache is not None:
-                                        trk_embs[i] = cache.get('emb')
-
-                            # Compute cosine sims
-                            # Map det_embs back to full D list indices
-                            det_map = {full_j: det_embs[vi] for full_j, vi in zip(valid_idxs, range(len(valid_idxs)))}
-                            for i in range(T):
-                                a = trk_embs[i]
+                                    trk_emb = cache.get('emb') if cache is not None else None
+                                    if trk_emb is not None:
+                                        trk_embs[i] = trk_emb
+                            if trk_crops:
+                                res_t = self.app_model.predict(trk_crops, device=getattr(self.cfg,'device','cuda:0'), verbose=False)
+                                for i in amb_rows:
+                                    ridx = trk_row_to_idx.get(i)
+                                    if ridx is None: continue
+                                    probs = getattr(res_t[ridx], 'probs', None)
+                                    if probs is None: continue
+                                    vec = probs.data
+                                    vec = vec.cpu().numpy() if hasattr(vec,'cpu') else np.asarray(vec)
+                                    vec = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
+                                    tr = state.tracks[i]
+                                    self.trk_cache[cid][tr.track_id] = {'emb': vec}
+                                    trk_embs[i] = vec
+                            # Build app_sim matrix initialized to 1.0 (neutral)
+                            app_sim = np.ones((T, D), dtype=np.float32)
+                            for i in amb_rows:
+                                a = trk_embs.get(i)
                                 if a is None: continue
-                                for j in range(D):
-                                    b = det_map.get(j)
+                                for j in cand_cols:
+                                    b = det_emb_map.get(j)
                                     if b is None: continue
-                                    app_sim[i,j] = float(np.dot(a,b) / (np.linalg.norm(a)*np.linalg.norm(b) + 1e-8))
+                                    app_sim[i, j] = float(np.dot(a, b) / (np.linalg.norm(a)*np.linalg.norm(b) + 1e-8))
                 except Exception:
                     app_sim = None
 
