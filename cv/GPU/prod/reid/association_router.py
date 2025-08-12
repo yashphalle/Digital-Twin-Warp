@@ -161,9 +161,10 @@ class AssociationRouter(threading.Thread):
                     db_msg['similarity_score'] = float(db_msg.pop('similarity'))
                 self._forward_db(cid, [db_msg], ts)
 
-                # Enqueue Redis upsert with embedding
+                # Enqueue Redis upsert with embedding (prefer provided embedding in track message)
                 try:
-                    item = {'camera_id': cid, 'global_id': gid, 'bbox': bbox, 'ts': ts, 'embedding': r.get('embedding')}
+                    emb = r.get('embedding')
+                    item = {'camera_id': cid, 'global_id': gid, 'bbox': bbox, 'ts': ts, 'embedding': emb}
                     if self.redis_write_q.full():
                         _ = self.redis_write_q.get_nowait()
                     self.redis_write_q.put_nowait(item)

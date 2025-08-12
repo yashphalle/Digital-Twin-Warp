@@ -6,7 +6,13 @@ import numpy as np
 
 
 class LatestFrameStore:
-    """Tiny per-camera ring buffer storing only the newest N frames (replace-old)."""
+    """Tiny per-camera ring buffer storing only the newest N frames (replace-old).
+
+    Notes on sync:
+    - We store (frame, ts) pairs where ts is time.time() at put().
+    - For GUI sync with pipeline messages carrying 'ts', use get_nearest_by_ts() to fetch
+      the frame closest to that timestamp (within a small tolerance) instead of latest().
+    """
 
     def __init__(self, camera_ids: List[int], depth: int = 2):
         self.depth = max(1, depth)
@@ -28,6 +34,29 @@ class LatestFrameStore:
             if not self._buffers[camera_id]:
                 return None
             return self._buffers[camera_id][-1]
+
+    def get_nearest_by_ts(self, camera_id: int, target_ts: float, tolerance_s: float = 0.2) -> Optional[Tuple[np.ndarray, float]]:
+        """Return the frame whose timestamp is nearest to target_ts within tolerance.
+        Preference order: latest <= target_ts; else nearest absolute difference <= tolerance; else None.
+        """
+        lock = self._locks.get(camera_id)
+        if lock is None:
+            return None
+        with lock:
+            buf = self._buffers.get(camera_id)
+            if not buf:
+                return None
+            best = None
+            best_dt = None
+            # iterate from newest to oldest
+            for (f, ts) in reversed(buf):
+                dt = abs(ts - target_ts)
+                if ts <= target_ts and dt <= tolerance_s:
+                    return (f, ts)
+                if dt <= tolerance_s and (best_dt is None or dt < best_dt):
+                    best = (f, ts)
+                    best_dt = dt
+            return best
 
     def pop_all(self, camera_id: int) -> List[Tuple[np.ndarray, float]]:
         lock = self._locks.get(camera_id)

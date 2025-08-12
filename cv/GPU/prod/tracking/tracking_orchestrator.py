@@ -4,7 +4,6 @@ import logging
 import queue
 from typing import Dict, List
 import numpy as np
-import cv2
 
 from GPU.prod.tracking.tracker_core import TrackerState, associate
 from GPU.pipelines.gpu_processor_fast_tracking import FastGlobalIDManager
@@ -35,13 +34,8 @@ class TrackingOrchestrator(threading.Thread):
         # Per-camera track embedding cache: {cid: {track_id: {'emb': np.ndarray, 'age': int}}}
         self.trk_cache: Dict[int, Dict[int, Dict[str, np.ndarray]]] = {cid: {} for cid in camera_ids}
 
-        # Lazy-load yolov8n-cls for embeddings if enabled
-        from ultralytics import YOLO
-        try:
-            self.app_model = YOLO(getattr(cfg, 'yolo_cls_model_path', 'yolov8n-cls.pt'))
-            self.app_model.to(getattr(cfg, 'device', 'cuda:0'))
-        except Exception:
-            self.app_model = None
+        # Disable internal yolov8n-cls; embeddings are provided by EmbeddingService
+        self.app_model = None
 
         self._frames = 0
         self._last_log = 0.0
@@ -49,18 +43,7 @@ class TrackingOrchestrator(threading.Thread):
     def stop(self):
         self._running = False
 
-    def _embed_detections(self, cid: int, det_xyxy: List[List[float]]) -> np.ndarray | None:
-        if self.app_model is None or not det_xyxy:
-            return None
-        # Fetch latest frame for this camera for cropping
-        try:
-            from GPU.prod.buffers.latest_frame_store import LatestFrameStore  # type: ignore
-        except Exception:
-            return None
-        # Attempt to get a frame via a back-reference path (we don't have latest_store here; rely on Redis/DB path if needed)
-        # For now, skip embedding if frame cannot be fetched; we keep IoU-only in that case.
-        # In a future change, we can pass latest_store into orchestrator constructor.
-        return None
+    # Note: Internal embedding disabled; embeddings are provided by EmbeddingService
 
     def bind_global_id(self, camera_id: int, track_id: int, new_gid: int):
         # Bind resolved global id in ID manager
@@ -96,108 +79,60 @@ class TrackingOrchestrator(threading.Thread):
                 det_confs.append(float(d.get('confidence', 0.0)))
                 det_classes.append(d.get('class'))
 
-            # On-demand appearance: only for ambiguous matches
+            # On-demand appearance: only for ambiguous matches; use provided embeddings
             app_sim = None
             state = self.states[cid]
             T = len(state.tracks)
             D = len(det_xyxy)
-            if self.app_model is not None and det_xyxy and self.latest_store is not None and T > 0 and D > 0:
-                item = self.latest_store.latest(cid)
+            # Build IoU matrix for ambiguity analysis
+            if det_xyxy and T > 0 and D > 0:
                 try:
-                    if item is not None:
-                        frame = item[0]
-                        # Compute IoU matrix for ambiguity analysis
-                        dets_np = np.array(det_xyxy, dtype=np.float32)
-                        iou_mat = np.zeros((T, D), dtype=np.float32)
-                        for i, tr in enumerate(state.tracks):
-                            x1t,y1t,x2t,y2t = tr.bbox.tolist()
+                    dets_np = np.array(det_xyxy, dtype=np.float32)
+                    iou_mat = np.zeros((T, D), dtype=np.float32)
+                    for i, tr in enumerate(state.tracks):
+                        x1t,y1t,x2t,y2t = tr.bbox.tolist()
+                        for j in range(D):
+                            x1d,y1d,x2d,y2d = dets_np[j]
+                            xi1 = max(x1t, x1d); yi1 = max(y1t, y1d)
+                            xi2 = min(x2t, x2d); yi2 = min(y2t, y2d)
+                            w = max(0.0, xi2 - xi1); h = max(0.0, yi2 - yi1)
+                            inter = w*h
                             a_tr = max(0.0, x2t-x1t) * max(0.0, y2t-y1t)
-                            for j in range(D):
-                                x1d,y1d,x2d,y2d = dets_np[j]
-                                xi1 = max(x1t, x1d); yi1 = max(y1t, y1d)
-                                xi2 = min(x2t, x2d); yi2 = min(y2t, y2d)
-                                w = max(0.0, xi2 - xi1); h = max(0.0, yi2 - yi1)
-                                inter = w*h
-                                a_det = max(0.0, x2d-x1d) * max(0.0, y2d-y1d)
-                                union = a_tr + a_det - inter + 1e-6
-                                iou_mat[i, j] = inter/union
-                        # Find ambiguous tracks
-                        iou_strong = float(getattr(self.cfg, 'iou_strong', 0.70))
-                        iou_conflict_delta = float(getattr(self.cfg, 'iou_conflict_delta', 0.05))
-                        amb_rows = []
-                        cand_cols = set()
-                        topk = int(getattr(self.cfg, 'amb_topk', 3))
-                        for i in range(T):
-                            row = iou_mat[i]
-                            order = np.argsort(row)[::-1]
-                            best = row[order[0]] if D>0 else 0.0
-                            second = row[order[1]] if D>1 else 0.0
-                            if best < iou_strong or (best - second) < iou_conflict_delta:
-                                amb_rows.append(i)
-                                for k in range(min(topk, D)):
-                                    cand_cols.add(int(order[k]))
-                        if amb_rows and cand_cols:
-                            # Build detection crops for candidate columns only
-                            cand_cols = sorted(list(cand_cols))
-                            det_crops = []
-                            det_col_to_idx = {}
-                            for idx_j, j in enumerate(cand_cols):
-                                x1,y1,x2,y2 = [int(max(0, v)) for v in det_xyxy[j]]
-                                x2 = min(x2, frame.shape[1]-1)
-                                y2 = min(y2, frame.shape[0]-1)
-                                if x2 <= x1 or y2 <= y1:
-                                    det_col_to_idx[j] = None
-                                    continue
-                                crop = cv2.resize(frame[y1:y2, x1:x2], (224,224), interpolation=cv2.INTER_AREA)
-                                det_crops.append(crop)
-                                det_col_to_idx[j] = len(det_crops)-1
-                            det_emb_map: Dict[int, np.ndarray] = {}
-                            if det_crops:
-                                res = self.app_model.predict(det_crops, device=getattr(self.cfg,'device','cuda:0'), verbose=False)
-                                for j in cand_cols:
-                                    ridx = det_col_to_idx.get(j)
-                                    if ridx is None: continue
-                                    probs = getattr(res[ridx], 'probs', None)
-                                    if probs is None: continue
-                                    vec = probs.data
-                                    vec = vec.cpu().numpy() if hasattr(vec,'cpu') else np.asarray(vec)
-                                    vec = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
-                                    det_emb_map[j] = vec
-                            # Prepare/refresh track embeddings for ambiguous rows
-                            refresh_period = int(getattr(self.cfg, 'embed_refresh_period', 10))
-                            trk_embs: Dict[int, np.ndarray] = {}
-                            trk_crops = []
-                            trk_row_to_idx = {}
-                            for i in amb_rows:
-                                tr = state.tracks[i]
-                                cache = self.trk_cache[cid].get(tr.track_id)
-                                need_refresh = cache is None or (tr.age % max(1, refresh_period) == 0)
-                                if need_refresh:
-                                    x1,y1,x2,y2 = [int(max(0, v)) for v in tr.bbox.tolist()]
-                                    x2 = min(x2, frame.shape[1]-1)
-                                    y2 = min(y2, frame.shape[0]-1)
-                                    if x2 > x1 and y2 > y1:
-                                        crop = cv2.resize(frame[y1:y2, x1:x2], (224,224), interpolation=cv2.INTER_AREA)
-                                        trk_row_to_idx[i] = len(trk_crops)
-                                        trk_crops.append(crop)
-                                else:
-                                    trk_emb = cache.get('emb') if cache is not None else None
-                                    if trk_emb is not None:
-                                        trk_embs[i] = trk_emb
-                            if trk_crops:
-                                res_t = self.app_model.predict(trk_crops, device=getattr(self.cfg,'device','cuda:0'), verbose=False)
-                                for i in amb_rows:
-                                    ridx = trk_row_to_idx.get(i)
-                                    if ridx is None: continue
-                                    probs = getattr(res_t[ridx], 'probs', None)
-                                    if probs is None: continue
-                                    vec = probs.data
-                                    vec = vec.cpu().numpy() if hasattr(vec,'cpu') else np.asarray(vec)
-                                    vec = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
-                                    tr = state.tracks[i]
-                                    self.trk_cache[cid][tr.track_id] = {'emb': vec}
-                                    trk_embs[i] = vec
-                            # Build app_sim matrix initialized to 1.0 (neutral)
+                            a_det = max(0.0, x2d-x1d) * max(0.0, y2d-y1d)
+                            union = a_tr + a_det - inter + 1e-6
+                            iou_mat[i, j] = inter/union
+                    # Find ambiguous rows/cols
+                    iou_strong = float(getattr(self.cfg, 'iou_strong', 0.70))
+                    iou_conflict_delta = float(getattr(self.cfg, 'iou_conflict_delta', 0.05))
+                    amb_rows = []
+                    cand_cols = set()
+                    topk = int(getattr(self.cfg, 'amb_topk', 3))
+                    for i in range(T):
+                        row = iou_mat[i]
+                        order = np.argsort(row)[::-1]
+                        best = row[order[0]] if D>0 else 0.0
+                        second = row[order[1]] if D>1 else 0.0
+                        if best < iou_strong or (best - second) < iou_conflict_delta:
+                            amb_rows.append(i)
+                            for k in range(min(topk, D)):
+                                cand_cols.add(int(order[k]))
+                    if amb_rows and cand_cols:
+                        # Use provided embeddings to build app_sim
+                        emb_list = msg.get('embeddings') or []
+                        # Track embedding cache
+                        trk_embs: Dict[int, np.ndarray] = {}
+                        for i in amb_rows:
+                            tr = state.tracks[i]
+                            cache = self.trk_cache[cid].get(tr.track_id)
+                            if cache is not None and 'emb' in cache:
+                                trk_embs[i] = cache['emb']
+                        det_emb_map: Dict[int, np.ndarray] = {}
+                        for j in cand_cols:
+                            if 0 <= j < len(emb_list):
+                                b = emb_list[j]
+                                if b is not None:
+                                    det_emb_map[j] = np.asarray(b, dtype=np.float32)
+                        if trk_embs and det_emb_map:
                             app_sim = np.ones((T, D), dtype=np.float32)
                             for i in amb_rows:
                                 a = trk_embs.get(i)
@@ -229,13 +164,21 @@ class TrackingOrchestrator(threading.Thread):
                     continue
                 gid = self.idm[cid].get_global_id(tr.track_id)
                 age = self.idm[cid].get_track_age(gid)
+                # Include track embedding if cached
+                emb_cached = None
+                try:
+                    cache = self.trk_cache[cid].get(tr.track_id)
+                    emb_cached = cache.get('emb') if cache else None
+                except Exception:
+                    emb_cached = None
                 out_tracks.append({
                     'camera_id': cid,
                     'track_id': tr.track_id,
                     'global_id': gid,
                     'age': age,
                     'bbox': [float(x) for x in tr.bbox.tolist()],
-                    'class': det_classes[0] if det_classes else 'object'
+                    'class': det_classes[0] if det_classes else 'object',
+                    'embedding': emb_cached,
                 })
 
             # Emit
@@ -243,6 +186,21 @@ class TrackingOrchestrator(threading.Thread):
                 if self.out_queue.full():
                     _ = self.out_queue.get_nowait()
                 self.out_queue.put_nowait({'camera_id': cid, 'tracks': out_tracks, 'ts': ts})
+            except Exception:
+                pass
+
+            # Update embedding cache for matched tracks using provided embeddings
+            try:
+                emb_list = msg.get('embeddings') or []
+                for tr in tracks:
+                    # if a detection matched this track this frame, we can infer via bbox equality to update cache
+                    # Simpler: copy the first valid embedding if available and cache under this track_id
+                    # More robust mapping requires match indices; for now, only set if track has no cache
+                    if self.trk_cache[cid].get(tr.track_id) is None:
+                        for emb in emb_list:
+                            if emb is not None:
+                                self.trk_cache[cid][tr.track_id] = {'emb': np.asarray(emb, dtype=np.float32)}
+                                break
             except Exception:
                 pass
 

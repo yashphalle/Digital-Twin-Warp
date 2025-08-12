@@ -68,6 +68,13 @@ class GridGUIThread(threading.Thread):
                 self._last_tracks[cid] = msg.get('tracks', [])
             if 'sys_fps' in msg:
                 self._sys_fps_map[cid] = float(msg.get('sys_fps'))
+        # Store the message ts for sync
+        try:
+            ts = float(msg.get('ts')) if 'ts' in msg else None
+            if ts is not None:
+                self._last_ts_map[cid] = ts
+        except Exception:
+            pass
         # Signal a new pipeline tick so GUI repaints immediately
         try:
             self._tick_event.set()
@@ -208,7 +215,13 @@ class GridGUIThread(threading.Thread):
             # Build frames list depending on view mode
             if self.single_view and self.camera_ids:
                 cid = self.camera_ids[self.current_cam_index]
-                item = self.latest_store.latest(cid)
+                # Try to fetch frame nearest to the message ts for better box sync
+                ts_msg = self._last_ts_map.get(cid)
+                item = None
+                if ts_msg is not None and hasattr(self.latest_store, 'get_nearest_by_ts'):
+                    item = self.latest_store.get_nearest_by_ts(cid, ts_msg, tolerance_s=0.25)
+                if item is None:
+                    item = self.latest_store.latest(cid)
                 if item is not None:
                     frame, ts = item
                     self._update_fps(cid, ts)
@@ -216,7 +229,13 @@ class GridGUIThread(threading.Thread):
                     frames.append((cid, frame))
             else:
                 for cid in self.camera_ids:
-                    item = self.latest_store.latest(cid)
+                    # Try to fetch frame nearest to the message ts for better box sync
+                    ts_msg = self._last_ts_map.get(cid)
+                    item = None
+                    if ts_msg is not None and hasattr(self.latest_store, 'get_nearest_by_ts'):
+                        item = self.latest_store.get_nearest_by_ts(cid, ts_msg, tolerance_s=0.25)
+                    if item is None:
+                        item = self.latest_store.latest(cid)
                     if item is None:
                         continue
                     frame, ts = item

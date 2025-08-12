@@ -140,8 +140,9 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
     # Per-camera tracker output
     trk_out = queue.Queue(maxsize=1000)
 
-    # Detection output (for batched detector path)
-    det_out = queue.Queue(maxsize=1000)
+    # Detection output (from DetectorWorker) -> EmbeddingService -> Orchestrator
+    det_raw = queue.Queue(maxsize=1000)
+    det_enriched = queue.Queue(maxsize=1000)
 
     # Optional DB writer (remote-only)
     from GPU.prod.db.mongo_writer import MongoWriterThread
@@ -202,13 +203,15 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
 
     # Choose tracking path based on config flag
     if getattr(cfg, 'use_batched_tracking', False):
-        # Start detector worker (batched)
-        detector = DetectorWorker(cfg=cfg, latest_store=store, output_queue=det_out)
+        # Start detector worker (batched) -> EmbeddingService -> Orchestrator
+        detector = DetectorWorker(cfg=cfg, latest_store=store, output_queue=det_raw)
         detector.start()
-        # Start orchestrator to consume detections and emit tracks
-        orchestrator = TrackingOrchestrator(cfg=cfg, det_queue=det_out, out_queue=trk_out, camera_ids=cfg.active_cameras, latest_store=store)
+        from GPU.prod.embedding.embedding_service import EmbeddingService
+        emb = EmbeddingService(cfg=cfg, latest_store=store, in_q=det_raw, out_q=det_enriched)
+        emb.start()
+        orchestrator = TrackingOrchestrator(cfg=cfg, det_queue=det_enriched, out_queue=trk_out, camera_ids=cfg.active_cameras, latest_store=store)
         orchestrator.start()
-        tracker_manager = orchestrator  # for router compatibility
+        tracker_manager = orchestrator
     else:
         # Resolve BoT-SORT YAML path relative to repo root
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -335,14 +338,13 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
     finally:
         # Stop tracking path
         if getattr(cfg, 'use_batched_tracking', False):
+            # Stop single orchestrator and detector
             try:
-                orchestrator.stop()
-                orchestrator.join(timeout=2)
+                orchestrator.stop(); orchestrator.join(timeout=2)
             except Exception:
                 pass
             try:
-                detector.stop()
-                detector.join(timeout=2)
+                detector.stop(); detector.join(timeout=2)
             except Exception:
                 pass
         else:
@@ -412,6 +414,68 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
 
 
 if __name__ == '__main__':
-    # Example run: subset of cameras first
-    run_detection_only(active_cameras=[8, 9])
+    import argparse
+
+    def _parse_cameras_str(spec: str) -> List[int]:
+        cams = set()
+        for part in (spec or '').split(','):
+            part = part.strip()
+            if not part:
+                continue
+            if '-' in part:
+                a, b = part.split('-', 1)
+                try:
+                    a_i = int(a); b_i = int(b)
+                    lo, hi = (a_i, b_i) if a_i <= b_i else (b_i, a_i)
+                    for x in range(lo, hi + 1):
+                        cams.add(x)
+                except ValueError:
+                    continue
+            else:
+                try:
+                    cams.add(int(part))
+                except ValueError:
+                    continue
+        return sorted(cams)
+
+    parser = argparse.ArgumentParser(description='Run detection/tracking pipeline')
+    parser.add_argument('--mode', choices=['tracking', 'detection'], default='tracking', help='pipeline mode')
+    parser.add_argument('--all', action='store_true', help='use all cameras [1..11]')
+    parser.add_argument('--cameras', type=str, help='comma/range list, e.g., "8" or "1,3,5-7"')
+    parser.add_argument('--duration', type=float, default=120.0, help='run duration in seconds')
+    parser.add_argument('--gui', dest='gui', action='store_true', help='enable GUI window')
+    parser.add_argument('--no-gui', dest='gui', action='store_false', help='disable GUI window')
+    parser.set_defaults(gui=False)
+    parser.add_argument('--reid', dest='reid', action='store_true', help='enable ReID/Redis')
+    parser.add_argument('--no-reid', dest='reid', action='store_false', help='disable ReID/Redis')
+    parser.set_defaults(reid=True)
+    parser.add_argument('--db', dest='db', action='store_true', help='enable MongoDB writer')
+    parser.add_argument('--no-db', dest='db', action='store_false', help='disable MongoDB writer')
+    parser.set_defaults(db=True)
+    parser.add_argument('--batched', dest='batched', action='store_true', help='use batched orchestrator (recommended)')
+    parser.add_argument('--percam', dest='batched', action='store_false', help='use per-camera trackers')
+    parser.set_defaults(batched=True)
+
+    args = parser.parse_args()
+
+    # Determine camera list
+    if args.all:
+        cameras = list(range(1, 12))
+    elif args.cameras:
+        parsed = _parse_cameras_str(args.cameras)
+        cameras = parsed if parsed else list(range(1, 12))
+    else:
+        cameras = list(range(1, 12))
+
+    if args.mode == 'tracking':
+        run_tracking(active_cameras=cameras,
+                     duration_s=args.duration,
+                     show_gui=args.gui,
+                     reid_enabled=args.reid,
+                     db_enabled=args.db,
+                     batched_tracking=args.batched)
+    else:
+        run_detection_only(active_cameras=cameras,
+                           duration_s=args.duration,
+                           show_gui=args.gui)
 

@@ -29,10 +29,29 @@ class RuntimeConfig:
     track_buffer: int = 200
     fuse_score: bool = True
 
+    # Appearance/association tuning (used by batched orchestrator)
+    iou_strong: float = 0.80
+    iou_conflict_delta: float = 0.10
+    amb_topk: int = 1
+    embed_refresh_period: int = 30
+    wiou: float = 0.7
+    wapp: float = 0.3
+
     # New: enable batched-detection-based tracking orchestrator
     use_batched_tracking: bool = False
     # New: enable batched-detection-based tracking orchestrator
     use_batched_tracking: bool = False
+
+    # Central embedding service (compute once, reuse)
+    embedding_service_enabled: bool = True
+    emb_batch_window_ms: int = 4
+    emb_max_batch_crops: int = 64
+    emb_max_crops_per_camera: int = 4
+    emb_target_w: int = 224
+    emb_target_h: int = 224
+    emb_filter_area_min: int = 15000
+    emb_filter_area_max: int = 1000000
+    emb_filter_classes: List[str] | None = None
 
     # ReID / Redis (feature-based cross-camera ID persistence)
     reid_enabled: bool = True
@@ -61,6 +80,12 @@ class RuntimeConfig:
     # System Processing FPS (post-tracker) reporting
     system_fps_window_s: float = 10.0  # sliding window length
     system_fps_log_interval_s: float = 2.0  # log cadence for SystemFPS
+    iou_strong: float = 0.80
+    iou_conflict_delta: float = 0.10
+    amb_topk: int = 1
+    embed_refresh_period: int = 30
+    wiou: float = 0.7
+    wapp: float = 0.3
 
 
 # Simple helper to build a default config
