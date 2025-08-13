@@ -12,7 +12,7 @@ class RuntimeConfig:
     target_fps_per_camera: float = 5.0
     frame_skip: int = 4  # for ~20-21 FPS input
     resize: Tuple[int, int] = (1280, 720)
-    latest_store_depth: int = 2  # configurable to 5
+    latest_store_depth: int = 12  # temporarily increased buffer depth for GUI sync (was 2)
 
     # Detection / Tracking
     model_path: str = os.path.join('cv', 'GPU', 'custom_yolo.pt')

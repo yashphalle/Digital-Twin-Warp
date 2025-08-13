@@ -75,7 +75,9 @@ class CameraWorker(threading.Thread):
             if self.resize and (frame.shape[1], frame.shape[0]) != self.resize:
                 frame = cv2.resize(frame, self.resize)
 
-            self.latest_store.put(self.camera_id, frame)
+            # Use capture timestamp for precise sync across pipeline components
+            capture_ts = time.time()
+            self.latest_store.put(self.camera_id, frame, ts=capture_ts)
             self._processed += 1
 
             # periodic ingest FPS (unique post-skip, post-fisheye, post-resize)

@@ -44,6 +44,11 @@ class GridGUIThread(threading.Thread):
 
         # Signal to repaint on new pipeline message (sync GUI to pipeline cadence)
         self._tick_event = threading.Event()
+        # Barrier control: require all cameras to update before repaint (with timeout)
+        self._epoch = 0
+        self._updated_in_epoch: Dict[int, int] = {cid: -1 for cid in self.camera_ids}
+        self._epoch_start_ts = 0.0
+        self._max_wait_s = 0.30
 
         # Simple per-camera FPS estimation (EMA on capture timestamps)
         self._last_ts_map: Dict[int, float] = {}
@@ -68,18 +73,26 @@ class GridGUIThread(threading.Thread):
                 self._last_tracks[cid] = msg.get('tracks', [])
             if 'sys_fps' in msg:
                 self._sys_fps_map[cid] = float(msg.get('sys_fps'))
-        # Store the message ts for sync
-        try:
-            ts = float(msg.get('ts')) if 'ts' in msg else None
-            if ts is not None:
-                self._last_ts_map[cid] = ts
-        except Exception:
-            pass
-        # Signal a new pipeline tick so GUI repaints immediately
-        try:
+            # Store the message ts for sync
+            try:
+                ts = float(msg.get('ts')) if 'ts' in msg else None
+                if ts is not None:
+                    self._last_ts_map[cid] = ts
+            except Exception:
+                pass
+            # Mark update in current epoch
+            self._updated_in_epoch[cid] = self._epoch
+            # If first update of a new epoch, start the epoch timer
+            if all(self._updated_in_epoch[c] == self._epoch for c in self.camera_ids):
+                # All cameras updated -> signal repaint
+                self._tick_event.set()
+            else:
+                # Start/refresh epoch timer
+                if self._epoch_start_ts == 0.0:
+                    self._epoch_start_ts = time.time()
+        # If timeout elapsed since epoch start, force repaint and advance epoch
+        if self._epoch_start_ts and (time.time() - self._epoch_start_ts) >= self._max_wait_s:
             self._tick_event.set()
-        except Exception:
-            pass
 
     def _draw_text(self, img: np.ndarray, text: str, org: Tuple[int, int], color=(0, 255, 0)):
         # outlined text for readability
@@ -210,7 +223,6 @@ class GridGUIThread(threading.Thread):
             except Exception:
                 pass
 
-            t0 = time.time()
             frames: List[Tuple[int, np.ndarray]] = []
             # Build frames list depending on view mode
             if self.single_view and self.camera_ids:
@@ -220,13 +232,15 @@ class GridGUIThread(threading.Thread):
                 item = None
                 if ts_msg is not None and hasattr(self.latest_store, 'get_nearest_by_ts'):
                     item = self.latest_store.get_nearest_by_ts(cid, ts_msg, tolerance_s=0.25)
-                if item is None:
-                    item = self.latest_store.latest(cid)
+                # No fallback to 'latest' here; if no matching frame, reuse previous render
                 if item is not None:
                     frame, ts = item
                     self._update_fps(cid, ts)
                     frame = self._draw_overlays(frame, cid)
                     frames.append((cid, frame))
+                else:
+                    # Reuse last frame by skipping update for this camera
+                    pass
             else:
                 for cid in self.camera_ids:
                     # Try to fetch frame nearest to the message ts for better box sync

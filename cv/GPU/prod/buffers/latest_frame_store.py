@@ -19,12 +19,17 @@ class LatestFrameStore:
         self._buffers: Dict[int, deque] = {cid: deque(maxlen=self.depth) for cid in camera_ids}
         self._locks: Dict[int, threading.Lock] = {cid: threading.Lock() for cid in camera_ids}
 
-    def put(self, camera_id: int, frame: np.ndarray) -> None:
+    def put(self, camera_id: int, frame: np.ndarray, ts: float | None = None) -> None:
+        """Insert a frame with an explicit capture timestamp.
+        If ts is None, time.time() is used.
+        """
         lock = self._locks.get(camera_id)
         if lock is None:
             return
+        if ts is None:
+            ts = time.time()
         with lock:
-            self._buffers[camera_id].append((frame, time.time()))
+            self._buffers[camera_id].append((frame, ts))
 
     def latest(self, camera_id: int) -> Optional[Tuple[np.ndarray, float]]:
         lock = self._locks.get(camera_id)
