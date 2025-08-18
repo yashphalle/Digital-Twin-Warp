@@ -21,9 +21,9 @@ from PIL import Image, ImageTk
 
 # Add project paths
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from cv.configs.config import Config
-from cv.configs.warehouse_config import get_warehouse_config
-from cv.final.modules.fisheye_corrector import OptimizedFisheyeCorrector
+from cv.config.config import Config
+from cv.config.warehouse_config import get_warehouse_config
+from cv.modules.fisheye_corrector import OptimizedFisheyeCorrector
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class CameraCollectionThread(threading.Thread):
     def _get_rtsp_url(self) -> str:
         """Get RTSP URL for camera - Use remote URLs for training data collection"""
         # Use remote URLs from config.py (updated URLs)
-        from cv.configs.config import Config
+        from cv.config.config import Config
         remote_url = Config.REMOTE_RTSP_CAMERA_URLS.get(self.camera_id, "")
         if not remote_url:
             # Fallback to old format if camera not found
