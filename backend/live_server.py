@@ -2,7 +2,7 @@
 Live server connecting to real MongoDB CV system
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -49,11 +49,74 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Load .env for RTSP URLs if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+# Prefer RTSP URLs from .env: RTSP_URL_1..RTSP_URL_11
+def _load_rtsp_env_urls():
+    urls = {}
+    for i in range(1, 12):
+        u = os.getenv(f"RTSP_URL_{i}")
+        if u:
+            urls[i] = u
+    return urls
+
+RTSP_ENV_URLS = _load_rtsp_env_urls()
+
+def get_rtsp_url(camera_id: int) -> str:
+    if camera_id in RTSP_ENV_URLS:
+        return RTSP_ENV_URLS[camera_id]
+    try:
+        # Use remote streams by default as requested
+        from cv.config.config import Config
+        url = ""
+        if hasattr(Config, 'REMOTE_RTSP_CAMERA_URLS'):
+            url = Config.REMOTE_RTSP_CAMERA_URLS.get(camera_id, "")
+        if not url and hasattr(Config, 'RTSP_CAMERA_URLS'):
+            url = Config.RTSP_CAMERA_URLS.get(camera_id, "")
+        return url or ""
+    except Exception:
+        return ""
+
+def rtsp_mjpeg_generator(camera_id: int):
+    """Stream actual RTSP as MJPEG if URL available; fallback to demo generator."""
+    url = get_rtsp_url(camera_id)
+    if not url:
+        # Fallback to demo frames
+        yield from camera_manager.generate_frame(camera_id)
+        return
+    cap = cv2.VideoCapture(url)
+    if not cap.isOpened():
+        logger.warning(f"RTSP open failed for camera {camera_id}, falling back to demo stream")
+        yield from camera_manager.generate_frame(camera_id)
+        return
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                logger.warning(f"RTSP read failed for camera {camera_id}, stopping stream")
+                break
+            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            if not ret:
+                continue
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+    except Exception as e:
+        logger.error(f"RTSP stream error (camera {camera_id}): {e}")
+    finally:
+        cap.release()
+
 # Import Config for database settings
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cv'))
-from configs.config import Config
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from cv.config.config import Config
+
 
 # MongoDB connection using Config
 MONGO_URI = Config.MONGO_URI  # Will use local or online based on Config.USE_LOCAL_DATABASE
@@ -89,15 +152,15 @@ class CameraManager:
         import sys
         import os
         sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cv'))
-        
+
         try:
-            from config import Config
-            
+            from cv.config.config import Config
+
             # Initialize all 11 cameras from Config
             for camera_id in Config.RTSP_CAMERA_URLS.keys():
                 camera_name = Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}")
                 rtsp_url = Config.RTSP_CAMERA_URLS[camera_id]
-                
+
                 # Set initial status based on active cameras
                 if camera_id in Config.ACTIVE_CAMERAS:
                     self.camera_status[camera_id] = "active"
@@ -105,7 +168,7 @@ class CameraManager:
                 else:
                     self.camera_status[camera_id] = "ready"
                     logger.info(f"💤 {camera_name} - STANDBY")
-                    
+
         except ImportError:
             logger.warning("⚠️  Could not import Config, using fallback camera setup")
             self._initialize_fallback_cameras()
@@ -114,7 +177,7 @@ class CameraManager:
         active_cameras = len([c for c in self.camera_status.values() if c == "active"])
         ready_cameras = len([c for c in self.camera_status.values() if c == "ready"])
         total_cameras = len(self.camera_status)
-        
+
         logger.info(f"📊 Camera system initialized:")
         logger.info(f"   • Total cameras: {total_cameras}")
         logger.info(f"   • Active cameras: {active_cameras}")
@@ -133,8 +196,8 @@ class CameraManager:
     def get_camera_status(self):
         """Get status of all cameras with enhanced information"""
         try:
-            from config import Config
-            
+            from cv.config.config import Config
+
             camera_info = {}
             for camera_id, status in self.camera_status.items():
                 camera_info[camera_id] = {
@@ -145,9 +208,9 @@ class CameraManager:
                     'coverage_zone': Config.CAMERA_COVERAGE_ZONES.get(camera_id, {}),
                     'active': camera_id in Config.ACTIVE_CAMERAS
                 }
-            
+
             return camera_info
-            
+
         except ImportError:
             # Fallback format
             return {
@@ -168,7 +231,7 @@ class CameraManager:
 
         # Try to get camera info
         try:
-            from config import Config
+            from cv.config.config import Config
             camera_name = Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}")
             rtsp_url = Config.RTSP_CAMERA_URLS.get(camera_id, "")
             coverage_zone = Config.CAMERA_COVERAGE_ZONES.get(camera_id, {})
@@ -180,7 +243,7 @@ class CameraManager:
         # For now, generate demo feeds since real RTSP integration is in CV module
         logger.info(f"📺 Using demo feed for {camera_name}")
         frame_count = 0
-        
+
         while True:
             try:
                 # Create animated demo frame
@@ -193,7 +256,7 @@ class CameraManager:
                         (camera_id * 50) % 255,
                         (camera_id * 70) % 255
                     )
-                    
+
                     # Animated background
                     color_intensity = int(50 + 30 * np.sin(frame_count * 0.1))
                     frame[:] = tuple(int(c * color_intensity / 255) for c in base_color)
@@ -245,13 +308,48 @@ class CameraManager:
                 logger.error(f"❌ Error generating frame for camera {camera_id}: {e}")
                 time.sleep(1)
 
+    def get_single_frame(self, camera_id):
+        """Generate a single JPEG frame for a specific camera (demo feed)."""
+        status = self.camera_status.get(camera_id, "offline")
+        try:
+            from cv.config.config import Config
+            camera_name = Config.CAMERA_NAMES.get(camera_id, f"Camera {camera_id}")
+            coverage_zone = Config.CAMERA_COVERAGE_ZONES.get(camera_id, {})
+        except ImportError:
+            camera_name = f"Camera {camera_id}"
+            coverage_zone = {}
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        if status in ["active", "ready"]:
+            base_color = (
+                (camera_id * 30) % 255,
+                (camera_id * 50) % 255,
+                (camera_id * 70) % 255,
+            )
+            color_intensity = int(50 + 30 * np.sin(time.time()))
+            frame[:] = tuple(int(c * color_intensity / 255) for c in base_color)
+            cv2.putText(frame, camera_name, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            status_text = "🎯 ACTIVE" if status == "active" else "💤 STANDBY"
+            cv2.putText(frame, status_text, (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0) if status == "active" else (255, 255, 0), 2)
+            if coverage_zone:
+                zone_text = f"Zone: {coverage_zone.get('x_start', 0)}-{coverage_zone.get('x_end', 0)}ft"
+                cv2.putText(frame, zone_text, (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        else:
+            frame[:] = (30, 30, 30)
+            cv2.putText(frame, camera_name, (150, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+            cv2.putText(frame, "OFFLINE", (180, 240), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ret:
+            return None
+        return buffer.tobytes()
 # Initialize camera manager
 camera_manager = CameraManager()
 
 @app.get("/")
 async def root():
     return {
-        "message": "Live Warehouse Tracking API", 
+        "message": "Live Warehouse Tracking API",
         "status": "running",
         "database": "connected" if tracking_collection is not None else "disconnected",
         "cv_system": "live"
@@ -262,7 +360,7 @@ async def get_tracked_objects():
     """Get ALL tracked objects in warehouse (complete warehouse state)"""
     if tracking_collection is None:
         raise HTTPException(status_code=503, detail="MongoDB not connected to CV system")
-    
+
     try:
         # Get active objects with valid physical coordinates
         # Active = status in ['new', 'tracked']
@@ -277,7 +375,7 @@ async def get_tracked_objects():
             query,
             {"_id": 0}
         ).sort([("last_seen", -1), ("timestamp", -1), ("first_seen", -1)]))
-        
+
         logger.info(f"📊 Found {len(detections)} detections in database")
 
         # Process detections for frontend
@@ -341,7 +439,7 @@ async def get_tracked_objects():
             "timestamp": datetime.now().isoformat(),
             "source": "warehouse_complete_state"
         }
-        
+
     except Exception as e:
         logger.error(f"❌ Error fetching objects: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching objects: {str(e)}")
@@ -353,44 +451,44 @@ async def get_warehouse_config():
         # Try to read from CV system's calibration file
         import os
         import json
-        
+
         calibration_paths = [
             "../cv/warehouse_calibration.json",
             "../../cv/warehouse_calibration.json",
             "../warehouse_calibration.json",
             "configs/warehouse_calibration.json"
         ]
-        
+
         for path in calibration_paths:
             if os.path.exists(path):
                 with open(path, 'r') as f:
                     calibration_data = json.load(f)
-                    
+
                 warehouse_dims = calibration_data.get('warehouse_dimensions', {})
-                
+
                 # Get full warehouse dimensions (180ft x 90ft)
                 full_warehouse_width_ft = 180.0
                 full_warehouse_length_ft = 90.0
-                
+
                 return {
                     # Primary dimensions in feet
                     "width_feet": full_warehouse_width_ft,
                     "length_feet": full_warehouse_length_ft,
-                    
+
                     # Secondary dimensions in meters for backward compatibility
                     "width_meters": full_warehouse_width_ft * 0.3048,
                     "length_meters": full_warehouse_length_ft * 0.3048,
-                    
+
                     # Camera coverage info
                     "camera_coverage": warehouse_dims.get('coverage_zone', {}),
-                    
+
                     "calibrated": True,
                     "calibration_file": path,
                     "last_updated": datetime.now().isoformat(),
                     "source": "cv_calibration_file",
                     "units": "feet"
                 }
-        
+
         # Fallback configuration - Full warehouse in feet
         return {
             "width_feet": 180.0,
@@ -403,7 +501,7 @@ async def get_warehouse_config():
             "source": "default_config",
             "units": "feet"
         }
-        
+
     except Exception as e:
         logger.warning(f"⚠️  Error reading calibration: {e}")
         return {
@@ -423,11 +521,11 @@ async def get_tracking_stats():
     """Get tracking statistics from live CV system"""
     if tracking_collection is None:
         raise HTTPException(status_code=503, detail="MongoDB not connected")
-    
+
     try:
         # Basic statistics
         total_objects = tracking_collection.count_documents({})
-        
+
         # Recent objects (last hour)
         one_hour_ago = datetime.now() - timedelta(hours=1)
         recent_objects = tracking_collection.count_documents({
@@ -436,15 +534,15 @@ async def get_tracking_stats():
                 {"updated_at": {"$gte": one_hour_ago}}
             ]
         })
-        
+
         # Unique persistent IDs
         unique_ids = len(tracking_collection.distinct("persistent_id"))
-        
+
         # Objects with real coordinates
         objects_with_coords = tracking_collection.count_documents({
             "real_center": {"$exists": True}
         })
-        
+
         return {
             "total_detections": total_objects,
             "unique_objects": unique_ids,
@@ -744,6 +842,34 @@ async def link_pallet_warp_id(request: PalletWarpLinkRequest) -> WarpIdResponse:
         logger.error(f"❌ Error linking Warp ID: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error linking Warp ID: {str(e)}")
 
+@app.get("/api/cameras/{camera_id}/snapshot")
+async def get_camera_snapshot(camera_id: int):
+    """Return a single JPEG frame from actual RTSP if provided in .env, else from Config, else demo."""
+    if camera_id < 1 or camera_id > 11:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    url = get_rtsp_url(camera_id)
+    img_bytes = None
+    try:
+        if url:
+            cap = cv2.VideoCapture(url)
+            if cap.isOpened():
+                ok, frame = cap.read()
+                if ok:
+                    # try a second frame to warm up
+                    ok2, frame2 = cap.read()
+                    frame = frame2 if ok2 else frame
+                    ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                    if ret:
+                        img_bytes = buffer.tobytes()
+                cap.release()
+        if img_bytes is None:
+            img_bytes = camera_manager.get_single_frame(camera_id)
+        if img_bytes is None:
+            raise HTTPException(status_code=500, detail="Failed to capture frame")
+        return Response(content=img_bytes, media_type="image/jpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Snapshot error: {str(e)}")
+
 @app.get("/api/cameras/status")
 async def get_cameras_status():
     """Get status of all cameras"""
@@ -771,7 +897,7 @@ async def get_camera_stream(camera_id: int):
         raise HTTPException(status_code=404, detail="Camera not found")
 
     return StreamingResponse(
-        camera_manager.generate_frame(camera_id),
+        rtsp_mjpeg_generator(camera_id),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
@@ -780,13 +906,13 @@ async def get_camera_info(camera_id: int):
     """Get detailed information about a specific camera"""
     if camera_id < 1 or camera_id > 11:
         raise HTTPException(status_code=404, detail="Camera not found")
-    
+
     camera_status = camera_manager.get_camera_status()
     camera_info = camera_status.get(camera_id, {})
-    
+
     if not camera_info:
         raise HTTPException(status_code=404, detail="Camera information not found")
-    
+
     return {
         "success": True,
         "camera": camera_info,
@@ -798,12 +924,12 @@ async def enable_camera(camera_id: int):
     """Enable processing for a specific camera"""
     if camera_id < 1 or camera_id > 11:
         raise HTTPException(status_code=404, detail="Camera not found")
-    
+
     try:
         # This would interface with the CV system to enable the camera
         # For now, update status in camera manager
         camera_manager.camera_status[camera_id] = "active"
-        
+
         return {
             "success": True,
             "message": f"Camera {camera_id} enabled for processing",
@@ -819,12 +945,12 @@ async def disable_camera(camera_id: int):
     """Disable processing for a specific camera"""
     if camera_id < 1 or camera_id > 11:
         raise HTTPException(status_code=404, detail="Camera not found")
-    
+
     try:
         # This would interface with the CV system to disable the camera
         # For now, update status in camera manager
         camera_manager.camera_status[camera_id] = "ready"
-        
+
         return {
             "success": True,
             "message": f"Camera {camera_id} disabled from processing",
@@ -840,13 +966,13 @@ async def get_multi_camera_system_status():
     """Get comprehensive multi-camera system status"""
     try:
         camera_status = camera_manager.get_camera_status()
-        
+
         # Calculate summary statistics
         total_cameras = len(camera_status)
         active_cameras = len([c for c in camera_status.values() if c.get('status') == 'active'])
         ready_cameras = len([c for c in camera_status.values() if c.get('status') == 'ready'])
         offline_cameras = len([c for c in camera_status.values() if c.get('status') == 'offline'])
-        
+
         return {
             "success": True,
             "system_type": "multi_camera_rtsp",
@@ -862,7 +988,7 @@ async def get_multi_camera_system_status():
             },
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get multi-camera status: {e}")
         raise HTTPException(status_code=500, detail=f"System status error: {str(e)}")
@@ -875,9 +1001,9 @@ async def get_camera_coverage_zones():
         import sys
         import os
         sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cv'))
-        
-        from config import Config
-        
+
+        from cv.config.config import Config
+
         coverage_zones = {}
         for camera_id, zone in Config.CAMERA_COVERAGE_ZONES.items():
             coverage_zones[camera_id] = {
@@ -887,7 +1013,7 @@ async def get_camera_coverage_zones():
                 "rtsp_url": Config.RTSP_CAMERA_URLS.get(camera_id, ""),
                 "active": camera_id in Config.ACTIVE_CAMERAS
             }
-        
+
         return {
             "success": True,
             "warehouse_dimensions": {
@@ -897,7 +1023,7 @@ async def get_camera_coverage_zones():
             "coverage_zones": coverage_zones,
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except ImportError:
         # Fallback data
         return {
@@ -924,5 +1050,5 @@ if __name__ == "__main__":
     print("📦 Collection: detections")
     print("🌐 API will be available at: http://localhost:8000")
     print("-" * 50)
-    
+
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

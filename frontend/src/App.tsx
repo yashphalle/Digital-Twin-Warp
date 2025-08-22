@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Package, Grid3x3, Search, Bell, User, TrendingUp, Clock, Activity, Box, Camera } from 'lucide-react';
+import { Package, Grid3x3, Search, Bell, User, TrendingUp, Clock, Activity, Box, Camera, Settings } from 'lucide-react';
 import CameraFeed from './components/CameraFeed';
 import CameraModal from './components/CameraModal';
 import WarehouseView from './components/WarehouseView';
 import TestWarehouse from './components/TestWarehouse';
 import WorkingWarehouseView from './components/WorkingWarehouseView';
-import { useTrackingStats } from './hooks/useTracking';
+import ConfigurationTab from './components/ConfigurationTab';
+// import { useTrackingStats } from './hooks/useTracking';
 
 // Types
 interface Pallet {
@@ -163,14 +164,17 @@ const generateGrid = (): GridCell[] => {
 
 
 // Header Component
-const Header: React.FC = () => {
+interface HeaderProps { searchQuery: string; onSearchChange: (value: string) => void; }
+const Header: React.FC<HeaderProps> = ({ searchQuery, onSearchChange }) => {
   return (
     <header className="bg-gray-900 border-b border-gray-800 px-6 py-4">
       <div className="flex items-center justify-center relative">
         {/* Centered logo and title */}
         <div className="flex items-center space-x-4">
           <img src="/logo3.png" alt="WARP Logo" className="w-24 h-18" />
-          <h1 className="text-2xl font-bold text-white">Digital Twin</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Digital Twin
+          </h1>
         </div>
 
         {/* Right side controls */}
@@ -180,6 +184,8 @@ const Header: React.FC = () => {
             <input
               type="text"
               placeholder="Search pallet ID..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
               className="bg-gray-800 text-white pl-10 pr-4 py-2 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -330,11 +336,18 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity }) => {
 };
 
 // Main App Component
-export default function App() {
+interface AppProps {
+  isAuthenticated?: boolean;
+}
+
+export default function App({ isAuthenticated = false }: AppProps) {
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [selectedPallet, setSelectedPallet] = useState<Pallet | undefined>(undefined);
   const [expandedCamera, setExpandedCamera] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'tracking'>('tracking'); // Default to tracking view
+  // NEW: Gate camera feeds until user enables them
+  const [showFeeds, setShowFeeds] = useState(false);
+  const [viewMode] = useState<'grid' | 'tracking'>('tracking'); // Grid view disabled
+  const [activeTab, setActiveTab] = useState<'overview' | 'configuration'>('overview');
 
   // Get tracking stats (temporarily disabled for testing)
   // const { stats: trackingStats } = useTrackingStats();
@@ -385,43 +398,20 @@ export default function App() {
     }).format(date);
   };
   
+  const [searchQuery, setSearchQuery] = useState('');
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
-      <Header />
-      
+      <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col">
           {/* View Toggle and Header */}
           <div className="p-4 pb-0">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">
-                {viewMode === 'tracking' ? 'Real-Time Object Tracking' : 'Global Warehouse Map'}
-              </h2>
+
               <div className="flex items-center space-x-4">
-                {/* View Mode Toggle */}
-                <div className="flex bg-gray-700 rounded-lg p-1">
-                  <button
-                    onClick={() => setViewMode('tracking')}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                      viewMode === 'tracking'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-300 hover:text-white'
-                    }`}
-                  >
-                    Live Tracking
-                  </button>
-                  <button
-                    onClick={() => setViewMode('grid')}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                      viewMode === 'grid'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-300 hover:text-white'
-                    }`}
-                  >
-                    Grid View
-                  </button>
-                </div>
+
 
                 {/* Zone Legend (only for grid view) */}
                 {viewMode === 'grid' && (
@@ -452,7 +442,7 @@ export default function App() {
           <div className="flex-1 p-4 pt-0">
             {viewMode === 'tracking' ? (
               /* New Warehouse Tracking View */
-              <WorkingWarehouseView />
+              <WorkingWarehouseView externalSearchQuery={searchQuery} feedsEnabled={showFeeds} onToggleFeeds={setShowFeeds} />
             ) : (
               /* Original Grid View */
               <div className="bg-gray-800 rounded-lg p-6 h-full flex flex-col">
@@ -616,25 +606,93 @@ export default function App() {
           
           {/* Camera Feeds */}
           <div className="p-6 pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map(cameraId => (
-                <CameraFeed
-                  key={cameraId}
-                  cameraId={cameraId}
-                  onExpand={setExpandedCamera}
-                  palletCount={palletsPerCamera[cameraId]}
-                />
-              ))}
-            </div>
+
+
+            {showFeeds && (
+              <>
+                {/* Row 1: 1,2,3,4 */}
+                <div className="grid grid-cols-4 gap-4 mb-4">
+                  {[1, 2, 3, 4].map(cameraId => (
+                    <CameraFeed
+                      key={cameraId}
+                      cameraId={cameraId}
+                      onExpand={setExpandedCamera}
+                      palletCount={palletsPerCamera[cameraId]}
+                      autoInit={showFeeds}
+                    />
+                  ))}
+                </div>
+                {/* Row 2: 5,6,7, blank */}
+                <div className="grid grid-cols-4 gap-4 mb-4">
+                  {[5, 6, 7].map(cameraId => (
+                    <CameraFeed
+                      key={cameraId}
+                      cameraId={cameraId}
+                      onExpand={setExpandedCamera}
+                      palletCount={palletsPerCamera[cameraId]}
+                      autoInit={showFeeds}
+                    />
+                  ))}
+                  <div className="bg-gray-800/30 rounded-lg border-2 border-dashed border-gray-700 flex items-center justify-center">
+                    <span className="text-xs text-gray-500">Empty</span>
+                  </div>
+                </div>
+                {/* Row 3: 8,9,10,11 */}
+                <div className="grid grid-cols-4 gap-4">
+                  {[8, 9, 10, 11].map(cameraId => (
+                    <CameraFeed
+                      key={cameraId}
+                      cameraId={cameraId}
+                      onExpand={setExpandedCamera}
+                      palletCount={palletsPerCamera[cameraId]}
+                      autoInit={showFeeds}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
         
         {/* Right Sidebar */}
-        <div className="w-96 bg-gray-800 p-6 border-l border-gray-700 overflow-y-auto">
-          <div className="space-y-6">
-            {/* Stats */}
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Overview</h3>
+        <div className="w-96 bg-gray-800 border-l border-gray-700 overflow-y-auto flex flex-col">
+          {/* Tab Navigation */}
+          <div className="flex bg-gray-900 border-b border-gray-700">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'overview'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-300 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <div className="flex items-center justify-center space-x-2">
+                <Activity className="w-4 h-4" />
+                <span>Overview</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('configuration')}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'configuration'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-300 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <div className="flex items-center justify-center space-x-2">
+                <Settings className="w-4 h-4" />
+                <span>Configuration</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="flex-1 p-6">
+            {activeTab === 'overview' ? (
+              <div className="space-y-6">
+                {/* Stats */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Overview</h3>
               <div className="space-y-3">
                 {viewMode === 'tracking' && trackingStats ? (
                   <>
@@ -738,15 +796,20 @@ export default function App() {
               </div>
             )}
             
-            {/* Activity Feed */}
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-              <div className="bg-gray-900 rounded-lg p-4">
-                {activities.map((activity, index) => (
-                  <ActivityItem key={index} activity={activity} />
-                ))}
+                {/* Activity Feed */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+                  <div className="bg-gray-900 rounded-lg p-4">
+                    {activities.map((activity, index) => (
+                      <ActivityItem key={index} activity={activity} />
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Configuration Tab */
+              <ConfigurationTab isAuthenticated={isAuthenticated} />
+            )}
           </div>
         </div>
       </div>

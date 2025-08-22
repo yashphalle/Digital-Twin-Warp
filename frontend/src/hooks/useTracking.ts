@@ -1,5 +1,49 @@
 import { useState, useEffect } from 'react';
-import { TrackedObject, WarehouseConfig, TrackingStats, TrackingResponse } from '../types/tracking';
+
+// Define types inline to avoid import issues
+interface TrackedObject {
+  persistent_id: number;
+  warp_id?: string | null;
+  center: {
+    x: number;
+    y: number;
+  };
+  real_center?: [number, number] | null;
+  bbox: [number, number, number, number];
+  confidence: number;
+  age_seconds: number;
+  times_seen: number;
+  status?: 'new' | 'tracking' | 'established';
+  first_seen: string;
+  last_seen: string;
+  created_at?: string;
+  updated_at?: string;
+  warp_id_linked_at?: string;
+}
+
+interface WarehouseConfig {
+  width_feet: number;
+  length_feet: number;
+  width_meters: number;
+  length_meters: number;
+  calibrated: boolean;
+  last_updated: string;
+  units?: string;
+}
+
+interface TrackingStats {
+  total_detections: number;
+  unique_objects: number;
+  recent_objects: number;
+  database_connected: boolean;
+  timestamp: string;
+}
+
+interface TrackingResponse {
+  objects: TrackedObject[];
+  count: number;
+  timestamp: string;
+}
 
 const API_BASE_URL = 'http://localhost:8000/api';
 

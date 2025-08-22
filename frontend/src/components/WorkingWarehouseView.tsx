@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Camera } from 'lucide-react';
 
 interface TrackedObject {
   persistent_id: number;
@@ -34,7 +35,12 @@ interface WarehouseConfig {
   calibrated: boolean;
 }
 
-const WorkingWarehouseView: React.FC = () => {
+interface WWVProps {
+  externalSearchQuery?: string;
+  feedsEnabled?: boolean;
+  onToggleFeeds?: (value: boolean) => void;
+}
+const WorkingWarehouseView: React.FC<WWVProps> = ({ externalSearchQuery, feedsEnabled, onToggleFeeds }) => {
   const [objects, setObjects] = useState<TrackedObject[]>([]);
   const [config] = useState<WarehouseConfig>({
     width_feet: 180.0,
@@ -49,8 +55,54 @@ const WorkingWarehouseView: React.FC = () => {
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
   const [useQuadrangles, setUseQuadrangles] = useState(true);
   const [selectedObject, setSelectedObject] = useState<TrackedObject | null>(null);
-  const [searchWarpId, setSearchWarpId] = useState('');
+  const [searchWarpId, setSearchWarpId] = useState(externalSearchQuery ?? '');
   const [highlightedObject, setHighlightedObject] = useState<number | null>(null);
+  const [systemStatus, setSystemStatus] = useState({
+    backend: 'unknown' as 'unknown' | 'connected' | 'disconnected',
+    db: 'unknown' as 'unknown' | 'connected' | 'disconnected',
+    cameras: { connected: 0, total: 0 }
+  });
+
+  const fetchSystemStatus = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/');
+      if (res.ok) {
+        const d = await res.json();
+        setSystemStatus(prev => ({
+          ...prev,
+          backend: 'connected',
+          db: d.database === 'connected' ? 'connected' : 'disconnected'
+        }));
+      } else {
+        setSystemStatus(prev => ({ ...prev, backend: 'disconnected', db: 'disconnected' }));
+      }
+    } catch (e) {
+      setSystemStatus(prev => ({ ...prev, backend: 'disconnected', db: 'disconnected' }));
+    }
+  };
+
+  const fetchCameraStatus = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/system/multi-camera/status');
+      if (res.ok) {
+        const d = await res.json();
+        const connected = (d.active_cameras || 0) + (d.ready_cameras || 0);
+        const total = d.total_cameras || 0;
+        setSystemStatus(prev => ({ ...prev, cameras: { connected, total } }));
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+
+  // Poll system status periodically
+  useEffect(() => {
+    fetchSystemStatus();
+    fetchCameraStatus();
+    const t = setInterval(() => { fetchSystemStatus(); fetchCameraStatus(); }, 5000);
+    return () => clearInterval(t);
+  }, []);
 
   // Camera zones - UPDATED to match calibration files
   const cameraZones = [
@@ -60,14 +112,14 @@ const WorkingWarehouseView: React.FC = () => {
     { id: 10, name: "Camera 10", x_start: 120, x_end: 180, y_start: 50, y_end: 75, active: true },
     { id: 11, name: "Camera 11", x_start: 120, x_end: 180, y_start: 75, y_end: 100, active: true },
     // Column 2 (Middle) - Cameras 5,6,7
-    { id: 5, name: "Camera 5", x_start: 60, x_end: 120, y_start: 0, y_end: 22.5, active: false },
-    { id: 6, name: "Camera 6", x_start: 60, x_end: 120, y_start: 22.5, y_end: 45, active: false },
-    { id: 7, name: "Camera 7", x_start: 60, x_end: 120, y_start: 45, y_end: 67.5, active: false },
+    { id: 5, name: "Camera 5", x_start: 60, x_end: 120, y_start: 0, y_end: 25, active: true },
+    { id: 6, name: "Camera 6", x_start: 60, x_end: 120, y_start: 25, y_end: 50, active: true },
+    { id: 7, name: "Camera 7", x_start: 60, x_end: 120, y_start: 50, y_end: 75, active: true },
     // Column 1 (Right side of screen) - Cameras 1,2,3,4 - CORRECTED COORDINATES
-    { id: 1, name: "Camera 1", x_start: 0, x_end: 62, y_start: 0, y_end: 25, active: true },
-    { id: 2, name: "Camera 2", x_start: 0, x_end: 62, y_start: 25, y_end: 50, active: true },
-    { id: 3, name: "Camera 3", x_start: 0, x_end: 62, y_start: 50, y_end: 75, active: true },
-    { id: 4, name: "Camera 4", x_start: 0, x_end: 62, y_start: 75, y_end: 100, active: true },
+    { id: 1, name: "Camera 1", x_start: 0, x_end: 60, y_start: 0, y_end: 25, active: true },
+    { id: 2, name: "Camera 2", x_start: 0, x_end: 60, y_start: 25, y_end: 50, active: true },
+    { id: 3, name: "Camera 3", x_start: 0, x_end: 60, y_start: 50, y_end: 75, active: true },
+    { id: 4, name: "Camera 4", x_start: 0, x_end: 60, y_start: 75, y_end: 100, active: true },
   ];
 
   const fetchObjects = async () => {
@@ -94,6 +146,31 @@ const WorkingWarehouseView: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Sync external search from navbar
+  useEffect(() => {
+    if (externalSearchQuery !== undefined) {
+      setSearchWarpId(externalSearchQuery);
+      const value = externalSearchQuery;
+      if (value && value.trim()) {
+        const q = value.trim().toLowerCase();
+        const matchingObject = objects.find(obj => {
+          const byWarp = obj.warp_id && obj.warp_id.toLowerCase().includes(q);
+          const byPersistent = obj.persistent_id !== undefined && String(obj.persistent_id).includes(q);
+          const byGlobal = obj.global_id !== undefined && String(obj.global_id).includes(q);
+          return byWarp || byPersistent || byGlobal;
+        });
+        if (matchingObject) {
+          setHighlightedObject(matchingObject.persistent_id);
+          setSelectedObject(matchingObject);
+        } else {
+          setHighlightedObject(null);
+        }
+      } else {
+        setHighlightedObject(null);
+      }
+    }
+  }, [externalSearchQuery, objects]);
+
   const getStatusColor = (status?: string, age_seconds?: number) => {
     if (status) {
       switch (status) {
@@ -117,11 +194,34 @@ const WorkingWarehouseView: React.FC = () => {
 
   // Use the original simple color system from database with search highlighting
   const getObjectColor = (object: TrackedObject) => {
-    // Highlight searched object
-    if (highlightedObject === object.persistent_id) {
-      return '#3b82f6'; // Blue highlight for searched object
+    // Use color from DB when available
+    if (object.color_rgb && Array.isArray(object.color_rgb) && object.color_rgb.length >= 3) {
+      return `rgb(${object.color_rgb[0]}, ${object.color_rgb[1]}, ${object.color_rgb[2]})`;
     }
-    return getStatusColor(object.status, object.age_seconds);
+    if (object.color_hex) {
+      return object.color_hex;
+    }
+    if (object.color_name && (object.color_confidence ?? 1) > 0.3) {
+      const colorMap: Record<string, string> = {
+        red: '#ff4444',
+        orange: '#ff8800',
+        yellow: '#ffdd00',
+        green: '#44ff44',
+        blue: '#4444ff',
+        purple: '#8844ff',
+        pink: '#ff44aa',
+        brown: '#8b4513',
+        black: '#333333',
+        white: '#f0f0f0',
+        gray: '#888888',
+        grey: '#888888',
+        dark: '#444444',
+      };
+      const c = colorMap[object.color_name.toLowerCase()];
+      if (c) return c;
+    }
+    // Fallback color
+    return '#d97706';
   };
 
   // Convert physical coordinates to screen percentage
@@ -167,48 +267,19 @@ const WorkingWarehouseView: React.FC = () => {
           key={`quad-${object.persistent_id}`}
           points={points}
           fill={objectColor}
-          stroke="#000000"
-          strokeWidth="0.2"
-          opacity="0.8"
+          stroke={highlightedObject === object.persistent_id ? '#3b82f6' : '#ffffff'}
+          strokeWidth={highlightedObject === object.persistent_id ? '0.6' : '0.2'}
+          fillOpacity={highlightedObject === object.persistent_id ? '1' : '0.85'}
+          strokeOpacity={highlightedObject === object.persistent_id ? '1' : '0.5'}
+          filter={highlightedObject === object.persistent_id ? 'url(#glow)' : undefined}
           style={{ cursor: 'pointer', pointerEvents: 'auto' }}
           onClick={() => setSelectedObject(object)}
         />
       );
 
-      // Add center point for reference
-      if (object.real_center) {
-        const [centerX, centerY] = physicalToScreen(object.real_center, warehouseWidthFt, warehouseLengthFt);
-        elements.push(
-          <circle
-            key={`center-${object.persistent_id}`}
-            cx={centerX}
-            cy={centerY}
-            r="1"
-            fill="#000000"
-            opacity="0.8"
-          />
-        );
-      }
-    } else {
-      // Fallback to center point rendering
-      if (object.real_center && Array.isArray(object.real_center) && object.real_center.length >= 2) {
-        const [x, y] = physicalToScreen(object.real_center, warehouseWidthFt, warehouseLengthFt);
 
-        elements.push(
-          <circle
-            key={`center-${object.persistent_id}`}
-            cx={x}
-            cy={y}
-            r="1.5"
-            fill={objectColor}
-            stroke="#000000"
-            strokeWidth="0.2"
-            opacity="0.8"
-            style={{ cursor: 'pointer', pointerEvents: 'auto' }}
-            onClick={() => setSelectedObject(object)}
-          />
-        );
-      }
+    } else {
+      // No center point rendering
     }
 
     // Add bounding box if enabled and available
@@ -253,107 +324,50 @@ const WorkingWarehouseView: React.FC = () => {
   }
 
   return (
-    <div className="bg-red-900 rounded-xl p-8 h-full border border-red-700 shadow-2xl">
+    <div className="bg-gray-900 rounded-xl p-8 h-full border border-gray-700 shadow-2xl">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-3xl font-bold text-red-500 tracking-tight">🔴 TESTING CHANGES - Live Object Tracking</h2>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Live Object Tracking</h2>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-sm text-gray-300 font-medium">Live CV System</span>
+            {/* Backend connection */}
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full ring-1 shadow-sm ${systemStatus.backend === 'connected' ? 'bg-emerald-900/20 ring-emerald-700/30' : 'bg-red-900/10 ring-red-700/30'}`}>
+              <div className={`w-2 h-2 rounded-full ${systemStatus.backend === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></div>
+              <span className="text-sm text-gray-200 font-medium">Backend {systemStatus.backend === 'connected' ? 'Connected' : 'Offline'}</span>
             </div>
-            <div className="bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600">
-              <span className="text-sm text-blue-400 font-semibold">{objects.length} Objects</span>
+            {/* Database connection */}
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full ring-1 shadow-sm ${systemStatus.db === 'connected' ? 'bg-emerald-900/20 ring-emerald-700/30' : 'bg-red-900/10 ring-red-700/30'}`}>
+              <div className={`w-2 h-2 rounded-full ${systemStatus.db === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></div>
+              <span className="text-sm text-gray-200 font-medium">DB {systemStatus.db === 'connected' ? 'Connected' : 'Offline'}</span>
             </div>
-            <div className="bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600">
-              <span className="text-xs text-green-400 font-medium">🔗 MongoDB</span>
+            {/* Cameras summary */}
+            <div className="px-3 py-1 rounded-full bg-gradient-to-r from-gray-800/60 to-gray-800/30 ring-1 ring-blue-500/20 shadow-sm">
+              <span className="text-sm text-blue-300 font-semibold">Cameras {systemStatus.cameras.connected}/{systemStatus.cameras.total}</span>
             </div>
-            <button
-              onClick={() => setShowCameraZones(!showCameraZones)}
-              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                showCameraZones
-                  ? 'bg-blue-600 border-blue-500 text-white'
-                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              📹 {showCameraZones ? 'Hide' : 'Show'} Zones
-            </button>
-            <button
-              onClick={() => setUseQuadrangles(!useQuadrangles)}
-              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                useQuadrangles
-                  ? 'bg-purple-600 border-purple-500 text-white'
-                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              🔷 {useQuadrangles ? 'Quadrangles' : 'Center Points'}
-            </button>
-            <button
-              onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
-              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                showBoundingBoxes
-                  ? 'bg-orange-600 border-orange-500 text-white'
-                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              📦 {showBoundingBoxes ? 'Hide' : 'Show'} Boxes
-            </button>
-
-            {/* Warp ID Search */}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Search Warp ID..."
-                value={searchWarpId}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSearchWarpId(value);
-
-                  if (value.trim()) {
-                    // Find and highlight object with matching Warp ID
-                    const matchingObject = objects.find(obj =>
-                      obj.warp_id && obj.warp_id.toLowerCase().includes(value.toLowerCase())
-                    );
-                    if (matchingObject) {
-                      setHighlightedObject(matchingObject.persistent_id);
-                      setSelectedObject(matchingObject);
-                    } else {
-                      setHighlightedObject(null);
-                    }
-                  } else {
-                    setHighlightedObject(null);
-                  }
-                }}
-                className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none w-40"
-              />
-              {searchWarpId && (
-                <button
-                  onClick={() => {
-                    setSearchWarpId('');
-                    setHighlightedObject(null);
-                  }}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  ✕
-                </button>
-              )}
+            {/* Feeds toggle switch */}
+            <div className="pl-3 ml-1 border-l border-gray-700 flex items-center gap-2">
+              <span className="text-xs text-gray-300 flex items-center gap-1">
+                <Camera className="w-3 h-3 text-gray-300" />
+                Live Camera Feed
+              </span>
+              <button
+                type="button"
+                aria-pressed={(feedsEnabled ?? false) ? true : false}
+                onClick={() => onToggleFeeds && onToggleFeeds(!(feedsEnabled ?? false))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  (feedsEnabled ?? false) ? 'bg-green-600' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform bg-white rounded-full shadow transition-transform ${
+                    (feedsEnabled ?? false) ? 'translate-x-5' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
           </div>
         </div>
         <div className="flex gap-6 text-sm text-gray-400">
-          <span className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
-            Warehouse: {config.width_meters}m × {config.length_meters}m
-          </span>
-          <span className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-            Live CV Detection Active
-          </span>
-          <span className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-            Real-time Coordinates
-          </span>
           {error && (
             <span className="flex items-center gap-2 text-red-400">
               <div className="w-1.5 h-1.5 bg-red-400 rounded-full"></div>
@@ -375,13 +389,44 @@ const WorkingWarehouseView: React.FC = () => {
           </div>
 
           {/* Warehouse boundary - Modern gray background */}
+            {/* Inbound docks segmented per right-column camera zone; plus Office area below Camera 7 */}
+            {(() => {
+              const warehouseWidthFt = config.width_feet || (config.width_meters * 3.28084);
+              const warehouseLengthFt = config.length_feet || (config.length_meters * 3.28084);
+              const rectStyle = (xStart: number, xEnd: number, yStart: number, yEnd: number) => ({
+                left: `${((warehouseWidthFt - xEnd) / warehouseWidthFt) * 100}%`,
+                top: `${(yStart / warehouseLengthFt) * 100}%`,
+                width: `${((xEnd - xStart) / warehouseWidthFt) * 100}%`,
+                height: `${((yEnd - yStart) / warehouseLengthFt) * 100}%`
+              } as React.CSSProperties);
+
+
+              return (
+                <>
+                  {/* Office area below Camera 7 (x:60-120, y:75-100) */}
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      ...rectStyle(60, 120, 75, 100),
+                      zIndex: 3
+                    }}
+                    aria-label="Office Area"
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="px-3 py-1 rounded bg-gray-900/40 border border-gray-600/60 text-gray-200 text-xs font-semibold tracking-wide backdrop-blur-sm">
+                        OFFICE AREA
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+
           <div
             className="relative bg-gray-600 border-2 border-gray-500 rounded-lg shadow-inner"
             style={{
-              width: '700px',
-              height: `${((config.length_feet || config.length_meters * 3.28084) / (config.width_feet || config.width_meters * 3.28084)) * 700}px`,
-              maxHeight: '560px',
-              minHeight: '350px'
+              width: 'clamp(760px, 70vw, 900px)',
+              aspectRatio: `${(config.width_feet || config.width_meters * 3.28084)} / ${(config.length_feet || config.length_meters * 3.28084)}`
             }}
           >
             {/* Subtle grid lines for reference */}
@@ -451,10 +496,7 @@ const WorkingWarehouseView: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Zone coordinates */}
-                  <div className="absolute bottom-1 right-1 text-xs bg-black bg-opacity-75 text-white px-1 py-0.5 rounded">
-                    {zone.x_start}-{zone.x_end}×{zone.y_start}-{zone.y_end}ft
-                  </div>
+
                 </div>
               );
             })}
@@ -478,8 +520,7 @@ const WorkingWarehouseView: React.FC = () => {
                 </filter>
               </defs>
 
-              {/* Simple test to verify SVG is working */}
-              <circle cx="10" cy="10" r="2" fill="#ff0000" opacity="1" />
+
 
               {objects.map((object) => {
                 const warehouseWidthFt = config.width_feet || config.width_meters * 3.28084;
@@ -490,7 +531,7 @@ const WorkingWarehouseView: React.FC = () => {
             </svg>
 
             {/* Object ID labels overlay */}
-            {objects.map((object) => {
+            {false && objects.map((object) => {
               // Check if real_center exists
               if (!object.real_center) {
                 return null;
@@ -598,15 +639,7 @@ const WorkingWarehouseView: React.FC = () => {
             )}
           </div>
 
-          {/* Debug info and coordinate indicators */}
-          <div className="absolute -bottom-8 left-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            Objects: {objects.length} | Quadrangles: {useQuadrangles ? 'ON' : 'OFF'} | Boxes: {showBoundingBoxes ? 'ON' : 'OFF'}
-            {objects.length > 0 && (
-              <span className="ml-2 text-green-400">
-                | Sample: ID={objects[0].persistent_id}, Color={objects[0].color_name}, Corners={objects[0].physical_corners?.length || 0}
-              </span>
-            )}
-          </div>
+
           <div className="absolute -bottom-8 right-0 text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-600">
             ({config.width_feet || (config.width_meters * 3.28084).toFixed(0)}ft, {config.length_feet || (config.length_meters * 3.28084).toFixed(0)}ft)
           </div>
@@ -621,7 +654,7 @@ const WorkingWarehouseView: React.FC = () => {
 
       {/* Object Details Sidebar */}
       {selectedObject && (
-        <div className="fixed top-4 right-4 w-80 bg-gray-800 rounded-xl border border-gray-600 shadow-2xl z-50 max-h-[80vh] overflow-y-auto">
+        <div className="fixed top-20 right-4 w-80 bg-gray-800 rounded-xl border border-gray-600 shadow-2xl z-50">
           <div className="p-4 border-b border-gray-600 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-white">Object Details</h3>
             <button
@@ -656,12 +689,7 @@ const WorkingWarehouseView: React.FC = () => {
                   )}
                 </div>
 
-                {selectedObject.global_id && (
-                  <>
-                    <div className="text-gray-400">Global ID:</div>
-                    <div className="text-blue-400">{selectedObject.global_id}</div>
-                  </>
-                )}
+
 
                 {selectedObject.camera_id && (
                   <>
@@ -676,18 +704,12 @@ const WorkingWarehouseView: React.FC = () => {
                 <div className="text-gray-400">Confidence:</div>
                 <div className="text-green-400">{(selectedObject.confidence * 100).toFixed(1)}%</div>
 
-                <div className="text-gray-400">Age:</div>
-                <div className="text-yellow-400">{formatAge(selectedObject.age_seconds)}</div>
+
 
                 <div className="text-gray-400">Times Seen:</div>
                 <div className="text-cyan-400">{selectedObject.times_seen}</div>
 
-                {selectedObject.area && (
-                  <>
-                    <div className="text-gray-400">Area:</div>
-                    <div className="text-orange-400">{selectedObject.area.toLocaleString()}px</div>
-                  </>
-                )}
+
 
                 {/* Timeline Information */}
                 {(selectedObject.first_seen || selectedObject.last_seen || selectedObject.warp_id_linked_at) && (
@@ -737,16 +759,7 @@ const WorkingWarehouseView: React.FC = () => {
                 </div>
               )}
 
-              {/* Bounding Box */}
-              {selectedObject.bbox && (
-                <div className="bg-gray-700 p-3 rounded-lg">
-                  <div className="text-xs text-gray-400 mb-1">Bounding Box (pixels)</div>
-                  <div className="text-orange-400 font-mono text-xs">
-                    Top-Left: ({selectedObject.bbox[0]}, {selectedObject.bbox[1]})<br/>
-                    Bottom-Right: ({selectedObject.bbox[2]}, {selectedObject.bbox[3]})
-                  </div>
-                </div>
-              )}
+
 
               {/* Physical Corners */}
               {selectedObject.physical_corners && selectedObject.physical_corners.length === 4 && (
@@ -762,124 +775,28 @@ const WorkingWarehouseView: React.FC = () => {
                 </div>
               )}
 
-              {/* Pixel Corners */}
-              {selectedObject.corners && selectedObject.corners.length === 4 && (
-                <div className="bg-gray-700 p-3 rounded-lg">
-                  <div className="text-xs text-gray-400 mb-1">Pixel Corners</div>
-                  <div className="text-yellow-400 font-mono text-xs space-y-1">
-                    {selectedObject.corners.map((corner, i) => (
-                      <div key={i}>
-                        Corner {i+1}: ({corner[0]}, {corner[1]})
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+
             </div>
 
-            {/* Color Information */}
-            {(selectedObject.color_name || selectedObject.color_hex) && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-gray-300 border-b border-gray-600 pb-1">Color Information</h4>
-                <div className="bg-gray-700 p-3 rounded-lg">
-                  {selectedObject.color_name && (
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-gray-400 text-sm">Detected Color:</span>
-                      <span
-                        className="font-semibold"
-                        style={{ color: selectedObject.color_hex || '#fff' }}
-                      >
-                        {selectedObject.color_name}
-                      </span>
-                    </div>
-                  )}
-                  {selectedObject.color_hex && (
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-gray-400 text-sm">Hex:</span>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-4 h-4 rounded border border-gray-500"
-                          style={{ backgroundColor: selectedObject.color_hex }}
-                        ></div>
-                        <span className="font-mono text-sm">{selectedObject.color_hex}</span>
-                      </div>
-                    </div>
-                  )}
-                  {selectedObject.color_confidence && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400 text-sm">Confidence:</span>
-                      <span className="text-green-400">{(selectedObject.color_confidence * 100).toFixed(1)}%</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+
+            {/* Action */}
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  // Placeholder hook to send data to robot
+                  // TODO: wire actual API call when endpoint is ready
+                  console.log('Send to robot:', selectedObject);
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+              >
+                Send data to robot
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Enhanced legend with display modes */}
-      <div className="mt-8 flex justify-center">
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-600 shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-4 text-center">Display Legend</h3>
 
-          {/* Object Status */}
-          <div className="mb-6">
-            <h4 className="text-xs font-semibold text-gray-400 mb-3">Object Status</h4>
-            <div className="flex gap-4 text-sm">
-              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
-                <div className="relative">
-                  <div className="w-3 h-3 rounded-full bg-yellow-400 border border-white shadow-lg"></div>
-                  <div className="absolute w-5 h-5 rounded-full bg-yellow-400 opacity-20 animate-pulse" style={{ transform: 'translate(-20%, -20%)' }}></div>
-                </div>
-                <span className="text-gray-300 font-medium">New (&lt;5s)</span>
-              </div>
-              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
-                <div className="relative">
-                  <div className="w-3 h-3 rounded-full bg-green-400 border border-white shadow-lg"></div>
-                  <div className="absolute w-5 h-5 rounded-full bg-green-400 opacity-20 animate-pulse" style={{ transform: 'translate(-20%, -20%)' }}></div>
-                </div>
-                <span className="text-gray-300 font-medium">Tracking (5s-1m)</span>
-              </div>
-              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
-                <div className="relative">
-                  <div className="w-3 h-3 rounded-full bg-teal-400 border border-white shadow-lg"></div>
-                  <div className="absolute w-5 h-5 rounded-full bg-teal-400 opacity-20 animate-pulse" style={{ transform: 'translate(-20%, -20%)' }}></div>
-                </div>
-                <span className="text-gray-300 font-medium">Established (&gt;1m)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Display Modes */}
-          <div className="mb-4">
-            <h4 className="text-xs font-semibold text-gray-400 mb-3">Display Modes</h4>
-            <div className="flex gap-4 text-sm">
-              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
-                <svg width="16" height="16" viewBox="0 0 16 16" className="text-purple-400">
-                  <polygon points="2,2 14,2 14,14 2,14" fill="currentColor" opacity="0.7" stroke="currentColor" strokeWidth="1"/>
-                </svg>
-                <span className="text-gray-300 font-medium">Quadrangle</span>
-              </div>
-              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
-                <div className="w-3 h-3 rounded-full bg-blue-400 border border-white"></div>
-                <span className="text-gray-300 font-medium">Center Point</span>
-              </div>
-              <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg border border-gray-600">
-                <svg width="16" height="16" viewBox="0 0 16 16" className="text-orange-400">
-                  <rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2,2"/>
-                </svg>
-                <span className="text-gray-300 font-medium">Bounding Box</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Instructions */}
-          <div className="text-xs text-gray-500 text-center">
-            Click objects for detailed coordinate information • Use controls above to toggle display modes
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

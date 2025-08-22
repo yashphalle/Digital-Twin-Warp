@@ -5,12 +5,15 @@ interface CameraFeedProps {
   cameraId: number;
   onExpand: (cameraId: number) => void;
   palletCount: number;
+  autoInit?: boolean; // when false, do not auto-connect or fetch until enabled
 }
 
-const CameraFeed: React.FC<CameraFeedProps> = ({ cameraId, onExpand, palletCount }) => {
+const CameraFeed: React.FC<CameraFeedProps> = ({ cameraId, onExpand, palletCount, autoInit = true }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
 
   const cameraColors: Record<number, string> = {
     1: 'border-purple-600',
@@ -19,10 +22,13 @@ const CameraFeed: React.FC<CameraFeedProps> = ({ cameraId, onExpand, palletCount
     4: 'border-amber-600'
   };
 
-  // Check camera status on component mount
+  // Initialize only when autoInit is enabled
   useEffect(() => {
+    if (!autoInit) return;
     checkCameraStatus();
-  }, [cameraId]);
+    // Pull a single snapshot as lightweight thumbnail, then pause
+    setThumbnailUrl(`http://localhost:8000/api/cameras/${cameraId}/snapshot?ts=${Date.now()}`);
+  }, [cameraId, autoInit]);
 
   const checkCameraStatus = async () => {
     try {
@@ -40,17 +46,9 @@ const CameraFeed: React.FC<CameraFeedProps> = ({ cameraId, onExpand, palletCount
     setError(null);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/camera/${cameraId}/connect`, {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        setIsConnected(true);
-        setError(null);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.detail || 'Failed to connect');
-      }
+      setPlaying(true);
+      setIsConnected(true);
+      setError(null);
     } catch (err) {
       setError('Connection failed');
     } finally {
@@ -60,9 +58,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({ cameraId, onExpand, palletCount
 
   const disconnectCamera = async () => {
     try {
-      await fetch(`http://localhost:8000/api/camera/${cameraId}/disconnect`, {
-        method: 'POST',
-      });
+      setPlaying(false);
       setIsConnected(false);
       setError(null);
     } catch (err) {
@@ -104,38 +100,60 @@ const CameraFeed: React.FC<CameraFeedProps> = ({ cameraId, onExpand, palletCount
         </div>
       </div>
       <div className="p-0 h-48 bg-gray-900/50 relative">
-        {isConnected ? (
+        {playing ? (
           <img
-            src={`http://localhost:8000/api/camera/${cameraId}/stream`}
+            src={`http://localhost:8000/api/cameras/${cameraId}/stream`}
             alt={`Camera ${cameraId} feed`}
             className="w-full h-full object-cover"
             onError={() => setError('Stream error')}
           />
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              {error ? (
-                <>
-                  <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-                  <p className="text-sm text-red-400">{error}</p>
-                </>
-              ) : (
-                <>
-                  <Camera className="w-8 h-8 text-gray-500 mx-auto mb-2" />
-                  <p className="text-sm text-gray-400">Camera disconnected</p>
-                </>
-              )}
-              <p className="text-xs text-gray-500 mt-1">Zone {cameraId}</p>
-              {!isConnecting && (
-                <button
-                  onClick={connectCamera}
-                  className="mt-3 px-3 py-1 bg-blue-600 text-xs rounded hover:bg-blue-700 transition-colors"
-                >
-                  Connect
-                </button>
-              )}
+          thumbnailUrl ? (
+            <img
+              src={thumbnailUrl}
+              alt={`Camera ${cameraId} snapshot`}
+              className="w-full h-full object-cover opacity-90"
+              onError={() => setError('Snapshot error')}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                {error ? (
+                  <>
+                    <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+                    <p className="text-sm text-red-400">{error}</p>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-8 h-8 text-gray-500 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Camera disconnected</p>
+                  </>
+                )}
+                <p className="text-xs text-gray-500 mt-1">Zone {cameraId}</p>
+              </div>
             </div>
-          </div>
+          )
+        )}
+
+        {/* Play overlay when paused */}
+        {!playing && (
+          <button
+            onClick={connectCamera}
+            className="absolute bottom-2 right-2 bg-blue-600/90 hover:bg-blue-600 text-white text-xs px-2 py-1 rounded shadow"
+            disabled={isConnecting}
+          >
+            {isConnecting ? 'Starting…' : 'Play'}
+          </button>
+        )}
+
+        {/* Stop button when playing */}
+        {playing && (
+          <button
+            onClick={disconnectCamera}
+            className="absolute bottom-2 right-2 bg-red-600/90 hover:bg-red-600 text-white text-xs px-2 py-1 rounded shadow"
+          >
+            Stop
+          </button>
         )}
       </div>
     </div>

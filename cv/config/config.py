@@ -37,29 +37,29 @@ class Config:
     # Single camera mode
     SINGLE_CAMERA_MODE = True
     USE_ZED_LEFT_VIEW_ONLY = True
-    
+
     # ZED Camera resolution and FPS
     # Note: ZED cameras output stereo images (side-by-side)
     # Full stereo frame: 1344x376, Left view: 672x376
     FRAME_WIDTH = 1344  # Full stereo width
     FRAME_HEIGHT = 376  # Height
     CAMERA_FPS = 30
-    
+
     # Use only left view from each stereo camera
     USE_STEREO_LEFT_ONLY = True
     EFFECTIVE_WIDTH = 672  # Width of left view (FRAME_WIDTH // 2)
     EFFECTIVE_HEIGHT = 376  # Same as FRAME_HEIGHT
-    
+
     # ==================== STITCHING SETTINGS ====================
     # Overlap configuration
     OVERLAP_ENABLED = True
     OVERLAP_PERCENTAGE = 0.2  # 20% overlap between cameras
     STITCH_MODE = "side_by_side"  # Options: "side_by_side", "blend", "overlap"
-    
+
     # Calibration settings
     AUTO_CALIBRATE = True
     CALIBRATION_FRAMES = 50  # Number of frames for auto-calibration
-    
+
     # ==================== DETECTION SETTINGS ====================
     # Model configuration
     MODEL_ID = "IDEA-Research/grounding-dino-base"
@@ -127,7 +127,7 @@ class Config:
     # Performance optimization
     DETECTION_BATCH_SIZE = 1
     MODEL_CACHE_FRAMES = 100  # Clear GPU cache every N frames
-    
+
     # ==================== SIFT TRACKING SETTINGS ====================
     # SIFT detector parameters (affects feature detection quality)
     SIFT_N_FEATURES = 500              # Max features per object (higher = more accurate, slower)
@@ -161,7 +161,7 @@ class Config:
     # Cross-camera tracking
     ENABLE_CROSS_CAMERA_TRACKING = True
     CROSS_CAMERA_MATCH_THRESHOLD = 0.6
-    
+
     # ==================== DATABASE SETTINGS ====================
     # Database mode configuration (load from environment with fallback)
     USE_LOCAL_DATABASE = os.getenv('USE_LOCAL_DATABASE', 'false').lower() == 'true'
@@ -176,7 +176,7 @@ class Config:
     # Database and collection names (load from environment with fallbacks)
     DATABASE_NAME = os.getenv('MONGODB_DATABASE_NAME', "WARP")
     COLLECTION_NAME = os.getenv('MONGODB_COLLECTION_NAME', "detections")
-    
+
     # Database behavior
     AUTO_CREATE_INDEXES = True
     CONNECTION_TIMEOUT = 5000  # milliseconds
@@ -188,7 +188,7 @@ class Config:
     # Data retention
     CLEANUP_OLD_DATA_HOURS = 24
     MAX_TRACKING_HISTORY = 1000
-    
+
     # ==================== COORDINATE MAPPING SETTINGS ====================
     # Warehouse physical dimensions (meters)
     WAREHOUSE_FLOOR_WIDTH = 10.0   # meters (warehouse width)
@@ -201,7 +201,7 @@ class Config:
     # Warehouse grid configuration
     GRID_ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
     GRID_COLUMNS = [1, 2, 3, 4, 5, 6, 7, 8]
-    
+
     # Camera zone mapping
     CAMERA_ZONES = {
         1: {'rows': ['A', 'B', 'C', 'D'], 'cols': [1, 2, 3, 4]},  # Top-left
@@ -209,26 +209,26 @@ class Config:
         3: {'rows': ['E', 'F', 'G', 'H'], 'cols': [1, 2, 3, 4]},  # Bottom-left
         4: {'rows': ['E', 'F', 'G', 'H'], 'cols': [5, 6, 7, 8]}   # Bottom-right
     }
-    
+
     # Dual camera zone mapping (for 2 cameras covering all zones)
     DUAL_CAMERA_ZONES = {
         1: [1, 3],  # Camera 1 covers zones 1 and 3 (left side)
         2: [2, 4]   # Camera 2 covers zones 2 and 4 (right side)
     }
-    
+
     # ==================== PERFORMANCE SETTINGS ====================
     # Frame processing
     FRAME_BUFFER_SIZE = 30
     PROCESSING_THREADS = 2
-    
+
     # Performance monitoring
     FPS_CALCULATION_FRAMES = 30
     PERFORMANCE_LOG_INTERVAL = 100  # frames
-    
+
     # Memory management
     ENABLE_MEMORY_OPTIMIZATION = True
     GARBAGE_COLLECT_INTERVAL = 1000  # frames
-    
+
     # ==================== DISPLAY SETTINGS ====================
     # Object visualization
     SHOW_BOUNDING_BOXES = True
@@ -305,7 +305,7 @@ class Config:
     # Info overlay
     SHOW_INFO_OVERLAY = True
     INFO_OVERLAY_HEIGHT = 180
-    
+
     # ==================== TRAINING DATA COLLECTION SETTINGS ====================
     # Training data collection paths
     TRAINING_DATA_ROOT = "training/data"
@@ -324,12 +324,12 @@ class Config:
     LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
     LOG_TO_FILE = True
     LOG_FILE_PATH = "warehouse_tracking.log"
-    
+
     # Console output
     VERBOSE_OUTPUT = True
     SHOW_DETECTION_STATS = True
     SHOW_TRACKING_STATS = True
-    
+
     # ==================== ADVANCED TUNING PARAMETERS ====================
     # Detection fine-tuning
     DETECTION_RETRY_COUNT = 1          # Retry detection if no objects found
@@ -364,7 +364,7 @@ class Config:
     ALERT_LOW_FPS_THRESHOLD = 10
     ALERT_HIGH_GPU_USAGE = 90          # percentage
     ALERT_HIGH_MEMORY_USAGE = 85       # percentage
-    
+
     # ==================== MULTI-CAMERA RTSP SETTINGS ====================
     # Full 11-camera warehouse configuration - NOW MANAGED BY warehouse_config.py
     ENABLE_MULTI_CAMERA_SYSTEM = True
@@ -377,7 +377,7 @@ class Config:
     except ImportError:
         # Fallback for Phase 1
         ACTIVE_CAMERAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # ALL CAMERAS
-    
+
     # ==================== RTSP URL CONFIGURATION ====================
 
     # Flag to switch between LOCAL and REMOTE camera URLs
@@ -402,8 +402,7 @@ class Config:
         10: "rtsp://admin:wearewarp!@192.168.0.82:8000/Streaming/channels/1",  # Cam 10 Back
         11: "rtsp://admin:wearewarp!@192.168.0.64:8000/Streaming/channels/1"   # Cam 11 Back
     }
-
-    # REMOTE RTSP Camera URLs (104.181.138.5 network)
+    # REMOTE RTSP Camera URLs (default static mapping; can be overridden by .env builder)
     REMOTE_RTSP_CAMERA_URLS = {
         # Row 1 (Front) - 4 cameras
         1: "rtsp://admin:wearewarp!@104.181.138.5:6554/Streaming/Channels/101",  # Cam 1 REMOTE
@@ -423,8 +422,11 @@ class Config:
         11: "rtsp://admin:wearewarp!@104.181.138.5:6554/Streaming/Channels/1101"  # Cam 11 REMOTE
     }
 
+
     # Active RTSP URLs (automatically selected based on USE_LOCAL_CAMERAS flag)
     RTSP_CAMERA_URLS = LOCAL_RTSP_CAMERA_URLS if USE_LOCAL_CAMERAS else REMOTE_RTSP_CAMERA_URLS
+
+    # Active RTSP URLs set above with env override
 
     @classmethod
     def get_camera_url(cls, camera_id: int) -> str:
@@ -482,33 +484,33 @@ class Config:
             'database_name': cls.DATABASE_NAME,
             'collection_name': cls.COLLECTION_NAME
         }
-    
+
     # Camera names for identification - NEW LAYOUT (3-Column, Origin Top-Right)
     CAMERA_NAMES = {
         # Column 1 (Rightmost) - Cameras 1-4 (top to bottom)
         1: "Camera 1 - Column 1 Top",
-        2: "Camera 2 - Column 1 Mid-Top", 
+        2: "Camera 2 - Column 1 Mid-Top",
         3: "Camera 3 - Column 1 Mid-Bottom",
         4: "Camera 4 - Column 1 Bottom",
-        
+
         # Column 2 (Middle) - Cameras 5-7 + Office (top to bottom)
         5: "Camera 5 - Column 2 Top",
         6: "Camera 6 - Column 2 Mid-Top",
         7: "Camera 7 - Column 2 Mid-Bottom",
-        
+
         # Column 3 (Leftmost) - Cameras 8-11 (top to bottom)
         8: "Camera 8 - Column 3 Top",  # Currently active for testing
         9: "Camera 9 - Column 3 Mid-Top",
         10: "Camera 10 - Column 3 Mid-Bottom",
         11: "Camera 11 - Column 3 Bottom"
     }
-    
+
     # Full warehouse dimensions (from user diagram)
     FULL_WAREHOUSE_WIDTH_FT = 180.0   # Total warehouse width in feet
     FULL_WAREHOUSE_LENGTH_FT = 90.0   # Total warehouse length in feet
     FULL_WAREHOUSE_WIDTH_M = 180.0 * 0.3048   # Convert to meters (54.864m)
     FULL_WAREHOUSE_LENGTH_M = 90.0 * 0.3048   # Convert to meters (27.432m)
-    
+
     # Camera coverage zones - NEW COORDINATE SYSTEM (Origin: Top-Right, 3-Column Layout)
     # Warehouse: 180ft x 90ft, Origin (0,0) at top-right, (180,90) at bottom-left
     # Column widths: 60ft each, Camera zones: 22.5ft height each
@@ -518,20 +520,20 @@ class Config:
         2: {"x_start": 0, "x_end": 60, "y_start": 22.5, "y_end": 45, "center_x": 30, "center_y": 33.75, "column": 1},
         3: {"x_start": 0, "x_end": 60, "y_start": 45, "y_end": 67.5, "center_x": 30, "center_y": 56.25, "column": 1},
         4: {"x_start": 0, "x_end": 60, "y_start": 67.5, "y_end": 90, "center_x": 30, "center_y": 78.75, "column": 1},
-        
+
         # Column 2 (Middle, x: 60-120ft) - Cameras 5-7 + Office (top to bottom)
         5: {"x_start": 60, "x_end": 120, "y_start": 0, "y_end": 22.5, "center_x": 90, "center_y": 11.25, "column": 2},
         6: {"x_start": 60, "x_end": 120, "y_start": 22.5, "y_end": 45, "center_x": 90, "center_y": 33.75, "column": 2},
         7: {"x_start": 60, "x_end": 120, "y_start": 45, "y_end": 67.5, "center_x": 90, "center_y": 56.25, "column": 2},
         "office": {"x_start": 60, "x_end": 120, "y_start": 67.5, "y_end": 90, "center_x": 90, "center_y": 78.75, "column": 2, "trackable": False},
-        
+
         # Column 3 (Leftmost, x: 120-180ft) - Camera 8 (top-left area)
         8: {"x_start": 120, "x_end": 180, "y_start": 0, "y_end": 25, "center_x": 150, "center_y": 12.5, "column": 3},  # FIXED: Camera 8 in top-left area
         9: {"x_start": 120, "x_end": 180, "y_start": 25, "y_end": 50, "center_x": 150, "center_y": 37.5, "column": 3},
         10: {"x_start": 120, "x_end": 180, "y_start": 50, "y_end": 75, "center_x": 150, "center_y": 62.5, "column": 3},
         11: {"x_start": 120, "x_end": 180, "y_start": 75, "y_end": 90, "center_x": 150, "center_y": 82.5, "column": 3}
     }
-    
+
     # RTSP connection settings
     RTSP_USERNAME = "admin"
     RTSP_PASSWORD = "wearewarp!"
@@ -540,11 +542,11 @@ class Config:
     RTSP_BUFFER_SIZE = 1
     MAX_RECONNECTION_ATTEMPTS = 5
     RECONNECTION_DELAY = 5
-    
+
     # Fisheye lens settings (2.8mm)
     FISHEYE_LENS_MM = 2.8
     FISHEYE_CORRECTION_ENABLED = True
-    
+
     # Frame processing for RTSP cameras
     RTSP_FRAME_WIDTH = 3840   # 4K resolution from cameras
     RTSP_FRAME_HEIGHT = 2160
@@ -557,7 +559,7 @@ class Config:
         """Get camera zone for given grid position"""
         row_index = ord(row.upper()) - ord('A')
         col_index = col - 1
-        
+
         if row_index < 4 and col_index < 4:
             return 1
         elif row_index < 4 and col_index >= 4:
@@ -566,30 +568,30 @@ class Config:
             return 3
         else:
             return 4
-    
+
     @classmethod
     def validate_config(cls):
         """Validate configuration settings"""
         errors = []
-        
+
         # Validate camera IDs
         if cls.CAMERA_1_ID == cls.CAMERA_2_ID:
             errors.append("Camera IDs must be different")
-        
+
         # Validate thresholds
         if not 0 < cls.CONFIDENCE_THRESHOLD < 1:
             errors.append("Confidence threshold must be between 0 and 1")
-        
+
         if not 0 < cls.OVERLAP_PERCENTAGE < 1:
             errors.append("Overlap percentage must be between 0 and 1")
-        
+
         # Validate SIFT parameters
         if cls.SIFT_N_FEATURES < 100:
             errors.append("SIFT features should be at least 100")
-        
+
         if errors:
             raise ValueError("Configuration errors: " + "; ".join(errors))
-        
+
         return True
 
     @classmethod

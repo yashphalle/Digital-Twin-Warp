@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrackedObject, WarehouseConfig } from '../types/tracking';
+import type { TrackedObject, WarehouseConfig } from '../types/tracking';
 
 interface ObjectMarkerProps {
   object: TrackedObject;
