@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Camera } from 'lucide-react';
+import ObjectCropsGallery from './ObjectCropsGallery';
+
 
 interface TrackedObject {
   persistent_id: number;
@@ -777,6 +779,13 @@ const WorkingWarehouseView: React.FC<WWVProps> = ({ externalSearchQuery, feedsEn
 
 
             </div>
+
+            {/* Recent Crops Gallery */}
+            <div className="bg-gray-700 rounded-lg p-3">
+              <div className="text-sm text-gray-400 mb-2">🖼️ Recent Crops</div>
+              <ObjectCropsGallery persistentId={selectedObject.persistent_id || selectedObject.global_id as any} />
+            </div>
+
 
 
             {/* Action */}

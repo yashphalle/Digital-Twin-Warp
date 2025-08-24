@@ -5,6 +5,7 @@ Live server connecting to real MongoDB CV system
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 from pymongo import MongoClient
@@ -48,6 +49,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Serve saved crops as static files under /images (relative repo path)
+try:
+    import os
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    images_dir = os.path.join(repo_root, 'images')
+    os.makedirs(images_dir, exist_ok=True)
+    app.mount('/images', StaticFiles(directory=images_dir), name='images')
+except Exception as e:
+    logger.warning(f"Static mount for /images failed: {e}")
+
+# Normalize GOOGLE_APPLICATION_CREDENTIALS to absolute path if provided relative in .env
+try:
+    import os as _os
+    cred = _os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if cred and not _os.path.isabs(cred):
+        # repo_root already computed above
+        abs_cred = _os.path.abspath(_os.path.join(repo_root, cred))
+        if _os.path.exists(abs_cred):
+            _os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = abs_cred
+            logger.info(f"Using GOOGLE_APPLICATION_CREDENTIALS at: {abs_cred}")
+        else:
+            logger.warning(f"GOOGLE_APPLICATION_CREDENTIALS not found at {abs_cred}")
+except Exception as _e:
+    logger.warning(f"Failed to normalize GOOGLE_APPLICATION_CREDENTIALS: {_e}")
+
 
 # Load .env for RTSP URLs if present
 try:
@@ -887,8 +913,133 @@ async def get_cameras_status():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        logger.error(f"❌ Error fetching camera status: {str(e)}")
+        logger.error(f"❌ Error fetching cameras status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching camera status: {str(e)}")
+
+from typing import List as _List
+
+@app.get("/api/crops/{persistent_id}")
+async def list_crops(persistent_id: int, camera_id: int | None = None, date: str | None = None, limit: int = 20, offset: int = 0):
+    """List saved crop image URLs for a persistent_id. Optional camera_id and date (YYYY-MM-DD).
+    If USE_GCS_CROPS=true, list from GCS bucket; else, list from local images/ directory.
+    """
+    try:
+        import os
+        # Load .env to allow configuring GCS via .env
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except Exception:
+            pass
+        use_gcs = os.getenv('USE_GCS_CROPS', 'false').lower() == 'true'
+        results = []
+        # Determine dates to scan
+        dates_to_check: _List[str] = []
+        if date:
+            dates_to_check = [date]
+        else:
+            from datetime import datetime
+            dates_to_check = [datetime.now().strftime('%Y-%m-%d')]
+
+        if use_gcs:
+            from google.cloud import storage
+            bucket_name = os.getenv('GCS_BUCKET')
+            prefix_base = os.getenv('GCS_PREFIX', 'images')
+            if not bucket_name:
+                raise HTTPException(status_code=500, detail="GCS_BUCKET not set")
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+
+            for d in dates_to_check:
+                # Cameras: specific or all under date
+                cam_dirs = [str(camera_id)] if camera_id is not None else None
+                # Build prefix(s): images/{date}/{cam}/{pid}/
+                if cam_dirs is None:
+                    prefix = f"{prefix_base}/{d}/"
+                    # List cams under date (1 level); then list per pid folder
+                    # Simpler: just list with startswith of pid dir
+                    iterator = client.list_blobs(bucket, prefix=prefix)
+                    for blob in iterator:
+                        # Expect names like images/{d}/{cam}/{pid}/{fname}
+                        parts = blob.name.split('/')
+                        if len(parts) < 5:
+                            continue
+                        _, dd, cam_s, pid_s, fname = parts[0], parts[1], parts[2], parts[3], parts[-1]
+                        if dd != d or pid_s != str(persistent_id):
+                            continue
+                        if not fname.lower().endswith('.jpg') or not fname.startswith(f"{persistent_id}_"):
+                            continue
+                        cam_int = int(cam_s) if cam_s.isdigit() else None
+                        mtime_ms = int(blob.updated.timestamp() * 1000) if getattr(blob, 'updated', None) else 0
+                        # Build URL (signed or public)
+                        if os.getenv('GCS_SIGNED_URLS', 'true').lower() == 'true':
+                            from datetime import timedelta
+                            ttl = int(os.getenv('GCS_SIGNED_URL_TTL', '600'))
+                            url = blob.generate_signed_url(expiration=timedelta(seconds=ttl), version='v4', method='GET')
+                        else:
+                            url = f"https://storage.googleapis.com/{bucket_name}/{blob.name}"
+                        results.append({
+                            'camera_id': cam_int,
+                            'date': d,
+                            'filename': fname,
+                            'url': url,
+                            'mtime_ms': mtime_ms,
+                        })
+                else:
+                    for cam_s in cam_dirs:
+                        prefix = f"{prefix_base}/{d}/{cam_s}/{persistent_id}/"
+                        for blob in client.list_blobs(bucket, prefix=prefix):
+                            fname = blob.name.split('/')[-1]
+                            if not fname.lower().endswith('.jpg') or not fname.startswith(f"{persistent_id}_"):
+                                continue
+                            mtime_ms = int(blob.updated.timestamp() * 1000) if getattr(blob, 'updated', None) else 0
+                            if os.getenv('GCS_SIGNED_URLS', 'true').lower() == 'true':
+                                from datetime import timedelta
+                                ttl = int(os.getenv('GCS_SIGNED_URL_TTL', '600'))
+                                url = blob.generate_signed_url(expiration=timedelta(seconds=ttl), version='v4', method='GET')
+                            else:
+                                url = f"https://storage.googleapis.com/{bucket_name}/{blob.name}"
+                            results.append({
+                                'camera_id': int(cam_s),
+                                'date': d,
+                                'filename': fname,
+                                'url': url,
+                                'mtime_ms': mtime_ms,
+                            })
+        else:
+            base = images_dir  # from static mount
+            for d in dates_to_check:
+                day_dir = os.path.join(base, d)
+                if not os.path.isdir(day_dir):
+                    continue
+                cams = [str(camera_id)] if camera_id is not None else [name for name in os.listdir(day_dir) if os.path.isdir(os.path.join(day_dir, name))]
+                for cam in cams:
+                    pid_dir = os.path.join(day_dir, cam, str(persistent_id))
+                    if not os.path.isdir(pid_dir):
+                        continue
+                    for fname in os.listdir(pid_dir):
+                        if not fname.lower().endswith('.jpg'):
+                            continue
+                        if not fname.startswith(f"{persistent_id}_"):
+                            continue
+                        fpath = os.path.join(pid_dir, fname)
+                        try:
+                            mtime_ms = int(os.path.getmtime(fpath) * 1000)
+                        except Exception:
+                            mtime_ms = 0
+                        results.append({
+                            'camera_id': int(cam),
+                            'date': d,
+                            'filename': fname,
+                            'url': f"/images/{d}/{cam}/{persistent_id}/{fname}",
+                            'mtime_ms': mtime_ms,
+                        })
+        # Sort newest first
+        results.sort(key=lambda x: x['mtime_ms'], reverse=True)
+        sliced = results[offset: offset + limit]
+        return {'persistent_id': persistent_id, 'count': len(results), 'items': sliced}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing crops: {e}")
 
 @app.get("/api/cameras/{camera_id}/stream")
 async def get_camera_stream(camera_id: int):

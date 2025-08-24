@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import '../index.css';
 import WorkingWarehouseView from '../components/WorkingWarehouseView';
 
+import ObjectCropsGallery from '../components/ObjectCropsGallery';
+
 // Icons (using text for simplicity, same as backup)
 const Package = () => <span>📦</span>;
 const Activity = () => <span>📊</span>;
@@ -138,6 +140,13 @@ const ObjectDetailsSidebar = ({ object, isOpen, onClose }: any) => {
           </div>
           <details className="bg-gray-700 rounded-lg">
             <summary className="p-3 cursor-pointer text-sm text-gray-400 hover:text-white">🔧 Raw Data</summary>
+
+          {/* Crops Gallery */}
+          <div className="bg-gray-700 rounded-lg p-3">
+            <div className="text-sm text-gray-400 mb-2">🖼️ Recent Crops</div>
+            <ObjectCropsGallery persistentId={object.persistent_id || object.global_id} />
+          </div>
+
             <div className="px-3 pb-3"><pre className="text-xs text-gray-300 bg-gray-800 p-2 rounded overflow-x-auto">{JSON.stringify(object, null, 2)}</pre></div>
           </details>
         </div>

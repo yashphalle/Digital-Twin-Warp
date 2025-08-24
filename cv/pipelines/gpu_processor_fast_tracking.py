@@ -7,6 +7,9 @@ import time
 import logging
 from typing import Dict, List, Optional
 from ultralytics import YOLO
+import cv2
+from pipelines.crop_writer import CropWriter
+from modules.movement_monitor import MovementMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +101,22 @@ class GPUBatchProcessorFastTracking:
     GPU batch processor for YOLOv8 tracking with speed optimization
     Uses camera-prefixed global IDs and 10-second track persistence
     """
-    
-    def __init__(self, 
+
+    def __init__(self,
                  model_path: str = 'custom_yolo.pt',
                  device: str = 'cuda:0',
                  active_cameras: List[int] = None,
                  confidence: float = 0.5,
                  use_fp16: bool = True):
+        # Movement crop components
+        self.crop_writers: Dict[int, CropWriter] = {}
+        self.movement_monitors: Dict[int, MovementMonitor] = {}
+        self.crops_base_path = 'images'  # relative as requested
+        self.crop_queue_size = 20
+        self.crop_padding_px = 32
+        self.crop_threshold_ft = 5.0
+        self.crop_cooldown_sec = 60.0
+        self.crop_max_per_track = 5
         """
         Initialize GPU batch processor for fast tracking
         
@@ -134,6 +146,20 @@ class GPUBatchProcessorFastTracking:
         for cam_id in self.active_cameras:
             self.models[cam_id] = self._create_model_instance(model_path, device)
             logger.info(f"✅ Model loaded for Camera {cam_id}")
+
+            # Initialize movement monitor and crop writer per camera
+            self.movement_monitors[cam_id] = MovementMonitor(
+                camera_id=cam_id,
+                threshold_ft=self.crop_threshold_ft,
+                cooldown_sec=120.0,
+                max_crops_per_track=self.crop_max_per_track,
+                padding_px=self.crop_padding_px,
+                force_test_mode=False,
+                established_age_frames=5,
+            )
+            writer = CropWriter(camera_id=cam_id, base_path=self.crops_base_path, queue_size=self.crop_queue_size, jpg_quality=85)
+            writer.start()
+            self.crop_writers[cam_id] = writer
 
         logger.info(f"🔍 Debug: models attribute created with {len(self.models)} instances")
 
@@ -244,6 +270,26 @@ class GPUBatchProcessorFastTracking:
                     print(f"DEBUG (Checkpoint 1 - Cam {cam_id}): ❗️❗️ OBJECT CREATED BUT 'persistent_id' IS MISSING!")
                 # --- END CHECKPOINT 1 ---
 
+                # Movement-based crop trigger (non-blocking): build job and enqueue
+                monitor = self.movement_monitors.get(cam_id)
+                writer = self.crop_writers.get(cam_id)
+                if monitor and writer:
+                    job = monitor.check_and_build_job(final_detection_obj, frame.shape, now_ts_ms=int(time.time()*1000))
+                    if job is not None:
+                        # Compute padded ROI bounds on this thread, then pass only ROI to writer
+                        x1, y1, x2, y2 = final_detection_obj['bbox']
+                        pad = self.crop_padding_px
+                        h, w = frame.shape[:2]
+                        px1 = max(0, int(x1 - pad))
+                        py1 = max(0, int(y1 - pad))
+                        px2 = min(w, int(x2 + pad))
+                        py2 = min(h, int(y2 + pad))
+                        if px2 > px1 and py2 > py1:
+                            roi = frame[py1:py2, px1:px2].copy()
+                            job['roi'] = roi
+                            job['camera_id'] = cam_id
+                            writer.enqueue(job)
+
                 final_detections.append(final_detection_obj)
 
             detections_by_camera[cam_id] = final_detections
@@ -313,7 +359,15 @@ class GPUBatchProcessorFastTracking:
 
     
     def cleanup(self):
-        """Cleanup GPU resources"""
+        """Cleanup GPU resources and background writers"""
+        # Stop crop writers
+        if hasattr(self, 'crop_writers'):
+            for cam_id, writer in self.crop_writers.items():
+                try:
+                    writer.stop(wait=True)
+                except Exception:
+                    pass
+
         # Clear multiple model instances
         if hasattr(self, 'models'):
             num_models = len(self.models)

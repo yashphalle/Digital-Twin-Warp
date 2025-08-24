@@ -1,12 +1,12 @@
 import threading
 import time
 import logging
-from typing import Optional
-import numpy as np
 from ultralytics import YOLO
 
 # Reuse FastGlobalIDManager for camera-prefixed IDs
 from pipelines.gpu_processor_fast_tracking import FastGlobalIDManager
+from modules.movement_monitor import MovementMonitor
+from pipelines.crop_writer import CropWriter
 
 
 class CameraTrackerThread(threading.Thread):
@@ -31,6 +31,12 @@ class CameraTrackerThread(threading.Thread):
         self.tracker_cfg = botsort_yaml_path
 
         self.id_manager = FastGlobalIDManager(camera_id)
+        # Movement-based crop components
+        self.movement_monitor = MovementMonitor(camera_id, threshold_ft=5.0, cooldown_sec=120.0, max_crops_per_track=5, padding_px=32, force_test_mode=False, established_age_frames=5)
+        # In GCP-first mode, CropWriter will upload directly to GCS (controlled by USE_GCS_CROPS env)
+        self.crop_writer = CropWriter(camera_id, base_path='images', queue_size=20, jpg_quality=85)
+        self.crop_writer.start()
+
         self._last_ts: float = 0.0
         self._running = False
 
@@ -41,6 +47,10 @@ class CameraTrackerThread(threading.Thread):
 
     def stop(self):
         self._running = False
+        try:
+            self.crop_writer.stop(wait=True)
+        except Exception:
+            pass
 
     def _parse_results(self, results) -> list:
         tracks = []
@@ -82,7 +92,6 @@ class CameraTrackerThread(threading.Thread):
             if ts <= self._last_ts:
                 time.sleep(0.002)
                 continue
-            t0 = time.time()
             try:
                 results = self.model.track(
                     frame,
@@ -99,6 +108,36 @@ class CameraTrackerThread(threading.Thread):
             tracks = self._parse_results(results)
             now = time.time()
             self._last_ts = ts
+
+            # Non-blocking crop trigger per track
+            try:
+                # Movement check uses bbox and age; we need frame shape which is known here
+                fshape = frame.shape
+                for t in tracks:
+                    # Normalize fields for monitor
+                    det = {
+                        'persistent_id': int(t.get('global_id')),
+                        'bbox': t.get('bbox'),
+                        'track_age': int(t.get('age', 0)),
+                        'camera_id': self.camera_id,
+                    }
+                    job = self.movement_monitor.check_and_build_job(det, fshape, now_ts_ms=int(ts*1000))
+                    if job is not None:
+                        x1, y1, x2, y2 = det['bbox']
+                        pad = 32
+                        h, w = fshape[:2]
+                        px1 = max(0, int(x1 - pad))
+                        py1 = max(0, int(y1 - pad))
+                        px2 = min(w, int(x2 + pad))
+                        py2 = min(h, int(y2 + pad))
+                        if px2 > px1 and py2 > py1:
+                            roi = frame[py1:py2, px1:px2].copy()
+                            job['roi'] = roi
+                            job['camera_id'] = self.camera_id
+                            self.crop_writer.enqueue(job)
+            except Exception:
+                pass
+
             # push tracks
             try:
                 if self.output_queue.full():
