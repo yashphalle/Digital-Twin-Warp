@@ -1,6 +1,8 @@
 import time
 from typing import Dict, Tuple, Optional
 import numpy as np
+import logging
+import os
 
 from .coordinate_mapper import CoordinateMapper
 
@@ -25,6 +27,17 @@ class MovementMonitor:
         force_test_mode: bool = False,
         established_age_frames: int = 5,
     ):
+        self._log = logging.getLogger(f"MovementMonitor[{camera_id}]")
+        # Allow test-mode via env to force early snapshot: MOVEMENT_TEST_MODE=true
+        try:
+            if os.getenv('MOVEMENT_TEST_MODE', 'false').lower() == 'true':
+                force_test_mode = True
+                established_age_frames = 0
+                cooldown_sec = 0.0
+                threshold_ft = 0.0
+                self._log.warning("MOVEMENT_TEST_MODE enabled: disabling age gate, cooldown, and movement threshold")
+        except Exception:
+            pass
         self.camera_id = camera_id
         self.threshold_ft = float(threshold_ft)
         self.cooldown_sec = float(cooldown_sec)
@@ -90,6 +103,8 @@ class MovementMonitor:
         # Age gate (>= established_age_frames)
         age = detection.get('track_age', 0)
         if age < self.established_age_frames and not self.force_test_mode:
+            if age % 10 == 0:
+                self._log.debug(f"age gate: age={age} < established={self.established_age_frames} pid={pid}")
             return None
 
         # Compute world center now (may be None if not calibrated)
@@ -115,6 +130,8 @@ class MovementMonitor:
                     if last_xy is None:
                         if world is not None:
                             self._last_xy[pid] = world
+                    if (count % 20) == 0:
+                        self._log.debug(f"no world mapping yet pid={pid} cam={self.camera_id} count={count}")
                     return None
                 # Cooldown
                 if now_ms - (last_ts or 0) < self.cooldown_sec * 1000.0:

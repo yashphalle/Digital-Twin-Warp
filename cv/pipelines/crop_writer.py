@@ -3,6 +3,7 @@ import cv2
 import time
 import queue
 import threading
+import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -12,19 +13,42 @@ try:
     load_dotenv()
 except Exception:
     pass
-# Normalize GOOGLE_APPLICATION_CREDENTIALS to absolute path if provided relative in .env
+# Normalize GOOGLE_APPLICATION_CREDENTIALS to absolute path; prefer repo-relative if given
 try:
     import os as _os
+    from pathlib import Path as _Path
     cred = _os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    if cred and not _os.path.isabs(cred):
+    if cred:
         repo_root = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), '..', '..'))
-        abs_cred = _os.path.abspath(_os.path.join(repo_root, cred))
-        if _os.path.exists(abs_cred):
-            _os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = abs_cred
+        candidates = []
+        def _add(p):
+            if p and p not in candidates:
+                candidates.append(p)
+        if _os.path.isabs(cred):
+            _add(cred)
+            p = _Path(cred)
+            parts = [part for part in p.parts if part not in (p.drive, '/', '\\')]
+            if parts:
+                _add(_os.path.join(repo_root, *parts))
+            _add(_os.path.join(repo_root, _os.path.basename(cred)))
+            if 'secrets' in cred.lower():
+                _add(_os.path.join(repo_root, 'secrets', _os.path.basename(cred)))
         else:
-            pass
-except Exception:
-    pass
+            _add(_os.path.join(repo_root, cred))
+            _add(_os.path.abspath(cred))
+        found = None
+        for c in candidates:
+            if c and _os.path.exists(c):
+                found = c
+                break
+        if found:
+            _os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = found
+            logging.getLogger('CropWriter').info(f"Using GOOGLE_APPLICATION_CREDENTIALS at: {found}")
+        else:
+            try_list = ', '.join(candidates)
+            logging.getLogger('CropWriter').warning(f"GOOGLE_APPLICATION_CREDENTIALS not found. Tried: {try_list}")
+except Exception as _e:
+    logging.getLogger('CropWriter').warning(f"Failed to normalize GOOGLE_APPLICATION_CREDENTIALS: {_e}")
 
 
 
@@ -36,6 +60,7 @@ class CropWriter:
     - Bounded queue with drop-oldest policy to avoid blocking producers
     - One writer thread per camera recommended
     """
+    _logger = logging.getLogger('CropWriter')
 
     def __init__(
         self,
@@ -46,6 +71,7 @@ class CropWriter:
         use_gcs: bool | None = None,
         gcs_bucket: Optional[str] = None,
         gcs_prefix: str = 'images',
+        use_flat: bool | None = None,  # flat layout: <base>/<pid>/<pid_timestamp>.jpg
     ):
         self.camera_id = camera_id
         self.base_path = base_path  # relative path per user request
@@ -63,6 +89,16 @@ class CropWriter:
         self.gcs_prefix = gcs_prefix or os.getenv('GCS_PREFIX', 'images')
         self._gcs_client = None
         self._gcs_bucket = None
+        if self.use_gcs and not self.gcs_bucket_name:
+            try:
+                CropWriter._logger.error("USE_GCS_CROPS=true but GCS_BUCKET is not set; uploads will fail")
+            except Exception:
+                pass
+
+        # Layout setting: flat vs date/cam/pid hierarchy
+        if use_flat is None:
+            use_flat = os.getenv('USE_FLAT_CROPS', 'false').lower() == 'true'
+        self.use_flat = bool(use_flat)
 
         # Metrics (best-effort, non-atomic)
         self.enqueued = 0
@@ -74,6 +110,10 @@ class CropWriter:
         if not self._running:
             self._running = True
             self._thread.start()
+            try:
+                CropWriter._logger.info(f"CropWriter[{self.camera_id}] started. use_gcs={self.use_gcs} use_flat={self.use_flat} base={self.base_path} bucket={self.gcs_bucket_name} prefix={self.gcs_prefix}")
+            except Exception:
+                pass
 
     def stop(self, wait: bool = True):
         self._running = False
@@ -109,6 +149,7 @@ class CropWriter:
             self.enqueued += 1
             return True
         except queue.Full:
+            CropWriter._logger.warning(f"CropWriter[{self.camera_id}] queue full; dropping oldest")
             # Drop oldest, then add
             try:
                 _ = self.queue.get_nowait()
@@ -165,6 +206,7 @@ class CropWriter:
                 ts_ms = int(job.get('ts_ms', int(time.time() * 1000)))
 
                 if roi is None or roi.size == 0 or pid is None:
+                    CropWriter._logger.debug(f"skip job: roi/ pid invalid roi_none={roi is None} pid={pid}")
                     continue
 
                 # Build path parts
@@ -185,18 +227,31 @@ class CropWriter:
                 if self.use_gcs:
                     # Upload to GCS only (GCP-first mode)
                     try:
-                        self._upload_to_gcs(date_str, cam, pid, filename, jpg_bytes)
+                        if self.use_flat:
+                            # Flat layout: <prefix>/<pid>/<filename>
+                            key = f"{self.gcs_prefix}/{pid}/{filename}"
+                            if self._gcs_client is None:
+                                self._init_gcs()
+                            blob = self._gcs_bucket.blob(key)
+                            blob.upload_from_string(jpg_bytes, content_type='image/jpeg')
+                        else:
+                            # Date-based: <prefix>/<date>/<cam>/<pid>/<filename>
+                            self._upload_to_gcs(date_str, cam, pid, filename, jpg_bytes)
                         self.saved += 1
-                    except Exception:
+                    except Exception as e:
+                        CropWriter._logger.error(f"GCS upload failed cam={cam} pid={pid} file={filename}: {e}")
                         self.errors += 1
                         continue
                 else:
                     # Local filesystem mode
-                    subdir = os.path.join(self.base_path, date_str, str(cam), str(pid))
+                    if self.use_flat:
+                        subdir = os.path.join(self.base_path, str(pid))
+                    else:
+                        subdir = os.path.join(self.base_path, date_str, str(cam), str(pid))
                     self._ensure_dir(subdir)
                     fpath = os.path.join(subdir, filename)
 
-                    if replace_latest:
+                    if replace_latest and not self.use_flat:
                         try:
                             files = [os.path.join(subdir, f) for f in os.listdir(subdir) if f.startswith(f"{pid}_") and f.endswith('.jpg')]
                             if files:

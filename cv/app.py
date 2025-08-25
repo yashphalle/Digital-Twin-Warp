@@ -6,6 +6,13 @@ _cv_path = os.path.abspath(os.path.dirname(__file__))
 if _cv_path not in sys.path:
     sys.path.append(_cv_path)
 
+# Load .env early so flags like USE_GCS_CROPS, USE_FLAT_CROPS, etc. are available
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 import queue
 import time
 from typing import List
@@ -26,6 +33,11 @@ def setup_logging(level: str = 'INFO'):
 
 def run_detection_only(active_cameras: List[int], duration_s: float = 60.0, show_gui: bool = False):
     cfg = default_config(active_cameras)
+    # Allow overriding log level via env LOG_LEVEL for debugging
+    try:
+        cfg.log_level = os.getenv('LOG_LEVEL', cfg.log_level)
+    except Exception:
+        pass
     setup_logging(cfg.log_level)
     logger = logging.getLogger("app")
 
@@ -127,6 +139,11 @@ def run_tracking(active_cameras: List[int], duration_s: float = 60.0, show_gui: 
         cfg.db_enabled = db_enabled
     if batched_tracking is not None:
         cfg.use_batched_tracking = batched_tracking
+    # Allow overriding log level via env LOG_LEVEL for debugging
+    try:
+        cfg.log_level = os.getenv('LOG_LEVEL', cfg.log_level)
+    except Exception:
+        pass
     setup_logging(cfg.log_level)
     logger = logging.getLogger("app")
 

@@ -58,19 +58,53 @@ try:
     app.mount('/images', StaticFiles(directory=images_dir), name='images')
 except Exception as e:
     logger.warning(f"Static mount for /images failed: {e}")
+# Load .env early so GOOGLE_APPLICATION_CREDENTIALS and other flags are available
+try:
+    from dotenv import load_dotenv as _load_dotenv_early
+    _load_dotenv_early()
+except Exception:
+    pass
 
-# Normalize GOOGLE_APPLICATION_CREDENTIALS to absolute path if provided relative in .env
+
+# Normalize GOOGLE_APPLICATION_CREDENTIALS to absolute path; prefer repo-relative if given
 try:
     import os as _os
+    from pathlib import Path as _Path
     cred = _os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    if cred and not _os.path.isabs(cred):
+    if cred:
         # repo_root already computed above
-        abs_cred = _os.path.abspath(_os.path.join(repo_root, cred))
-        if _os.path.exists(abs_cred):
-            _os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = abs_cred
-            logger.info(f"Using GOOGLE_APPLICATION_CREDENTIALS at: {abs_cred}")
+        candidates = []
+        def _add(path: str):
+            if path and path not in candidates:
+                candidates.append(path)
+        if _os.path.isabs(cred):
+            # Try provided absolute path first
+            _add(cred)
+            # Also try repo_root + path parts without drive/root (handles C:\secrets\... and /secrets/...)
+            p = _Path(cred)
+            parts = [part for part in p.parts if part not in (p.drive, '/', '\\')]
+            if parts:
+                _add(_os.path.join(repo_root, *parts))
+            # Try repo_root + basename
+            _add(_os.path.join(repo_root, _os.path.basename(cred)))
+            # If contains 'secrets', try repo_root/secrets/basename
+            if 'secrets' in cred.lower():
+                _add(_os.path.join(repo_root, 'secrets', _os.path.basename(cred)))
         else:
-            logger.warning(f"GOOGLE_APPLICATION_CREDENTIALS not found at {abs_cred}")
+            # Relative path: try repo_root first, then cwd-absolute
+            _add(_os.path.join(repo_root, cred))
+            _add(_os.path.abspath(cred))
+        found = None
+        for c in candidates:
+            if c and _os.path.exists(c):
+                found = c
+                break
+        if found:
+            _os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = found
+            logger.info(f"Using GOOGLE_APPLICATION_CREDENTIALS at: {found}")
+        else:
+            try_list = ', '.join(candidates)
+            logger.warning(f"GOOGLE_APPLICATION_CREDENTIALS not found. Tried: {try_list}")
 except Exception as _e:
     logger.warning(f"Failed to normalize GOOGLE_APPLICATION_CREDENTIALS: {_e}")
 
@@ -934,60 +968,39 @@ async def list_crops(persistent_id: int, camera_id: int | None = None, date: str
         use_gcs = os.getenv('USE_GCS_CROPS', 'false').lower() == 'true'
         results = []
         # Determine dates to scan
+        # If a date is provided, use it. Otherwise search backwards up to CROPS_LOOKBACK_DAYS for the latest non-empty date
         dates_to_check: _List[str] = []
+        latest_only = False
+        lookback_days = 0
         if date:
             dates_to_check = [date]
+            latest_only = False
         else:
-            from datetime import datetime
-            dates_to_check = [datetime.now().strftime('%Y-%m-%d')]
+            latest_only = True
+            from datetime import datetime, timedelta
+            lookback_days = max(0, int(os.getenv('CROPS_LOOKBACK_DAYS', '30')))
+            today = datetime.now().date()
+            dates_to_check = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(0, lookback_days + 1)]
 
         if use_gcs:
             from google.cloud import storage
             bucket_name = os.getenv('GCS_BUCKET')
             prefix_base = os.getenv('GCS_PREFIX', 'images')
+            use_flat = os.getenv('USE_FLAT_CROPS', 'false').lower() == 'true'
             if not bucket_name:
                 raise HTTPException(status_code=500, detail="GCS_BUCKET not set")
             client = storage.Client()
             bucket = client.bucket(bucket_name)
 
             for d in dates_to_check:
+                day_found = False
                 # Cameras: specific or all under date
                 cam_dirs = [str(camera_id)] if camera_id is not None else None
-                # Build prefix(s): images/{date}/{cam}/{pid}/
+                # Build prefix(s)
                 if cam_dirs is None:
-                    prefix = f"{prefix_base}/{d}/"
-                    # List cams under date (1 level); then list per pid folder
-                    # Simpler: just list with startswith of pid dir
-                    iterator = client.list_blobs(bucket, prefix=prefix)
-                    for blob in iterator:
-                        # Expect names like images/{d}/{cam}/{pid}/{fname}
-                        parts = blob.name.split('/')
-                        if len(parts) < 5:
-                            continue
-                        _, dd, cam_s, pid_s, fname = parts[0], parts[1], parts[2], parts[3], parts[-1]
-                        if dd != d or pid_s != str(persistent_id):
-                            continue
-                        if not fname.lower().endswith('.jpg') or not fname.startswith(f"{persistent_id}_"):
-                            continue
-                        cam_int = int(cam_s) if cam_s.isdigit() else None
-                        mtime_ms = int(blob.updated.timestamp() * 1000) if getattr(blob, 'updated', None) else 0
-                        # Build URL (signed or public)
-                        if os.getenv('GCS_SIGNED_URLS', 'true').lower() == 'true':
-                            from datetime import timedelta
-                            ttl = int(os.getenv('GCS_SIGNED_URL_TTL', '600'))
-                            url = blob.generate_signed_url(expiration=timedelta(seconds=ttl), version='v4', method='GET')
-                        else:
-                            url = f"https://storage.googleapis.com/{bucket_name}/{blob.name}"
-                        results.append({
-                            'camera_id': cam_int,
-                            'date': d,
-                            'filename': fname,
-                            'url': url,
-                            'mtime_ms': mtime_ms,
-                        })
-                else:
-                    for cam_s in cam_dirs:
-                        prefix = f"{prefix_base}/{d}/{cam_s}/{persistent_id}/"
+                    # Flat layout ignores date; list under <prefix>/<pid>/
+                    if os.getenv('USE_FLAT_CROPS', 'false').lower() == 'true':
+                        prefix = f"{prefix_base}/{persistent_id}/"
                         for blob in client.list_blobs(bucket, prefix=prefix):
                             fname = blob.name.split('/')[-1]
                             if not fname.lower().endswith('.jpg') or not fname.startswith(f"{persistent_id}_"):
@@ -999,19 +1012,59 @@ async def list_crops(persistent_id: int, camera_id: int | None = None, date: str
                                 url = blob.generate_signed_url(expiration=timedelta(seconds=ttl), version='v4', method='GET')
                             else:
                                 url = f"https://storage.googleapis.com/{bucket_name}/{blob.name}"
-                            results.append({
-                                'camera_id': int(cam_s),
-                                'date': d,
-                                'filename': fname,
-                                'url': url,
-                                'mtime_ms': mtime_ms,
-                            })
+                            results.append({'camera_id': None, 'date': None, 'filename': fname, 'url': url, 'mtime_ms': mtime_ms})
+                        break
+                    # Date-based: images/{date}/{cam}/{pid}/
+                    prefix = f"{prefix_base}/{d}/"
+                    iterator = client.list_blobs(bucket, prefix=prefix)
+                    for blob in iterator:
+                        parts = blob.name.split('/')
+                        if len(parts) < 5:
+                            continue
+                        _, dd, cam_s, pid_s, fname = parts[0], parts[1], parts[2], parts[3], parts[-1]
+                        if dd != d or pid_s != str(persistent_id):
+                            continue
+                        if not fname.lower().endswith('.jpg') or not fname.startswith(f"{persistent_id}_"):
+                            continue
+                        cam_int = int(cam_s) if cam_s.isdigit() else None
+                        mtime_ms = int(blob.updated.timestamp() * 1000) if getattr(blob, 'updated', None) else 0
+                        if os.getenv('GCS_SIGNED_URLS', 'true').lower() == 'true':
+                            from datetime import timedelta
+                            ttl = int(os.getenv('GCS_SIGNED_URL_TTL', '600'))
+                            url = blob.generate_signed_url(expiration=timedelta(seconds=ttl), version='v4', method='GET')
+                        else:
+                            url = f"https://storage.googleapis.com/{bucket_name}/{blob.name}"
+                        results.append({'camera_id': cam_int, 'date': d, 'filename': fname, 'url': url, 'mtime_ms': mtime_ms})
+                        day_found = True
+                else:
+                    for cam_s in cam_dirs:
+                        prefix = f"{prefix_base}/{d}/{cam_s}/{persistent_id}/"
+                        items_for_cam = 0
+                        for blob in client.list_blobs(bucket, prefix=prefix):
+                            fname = blob.name.split('/')[-1]
+                            if not fname.lower().endswith('.jpg') or not fname.startswith(f"{persistent_id}_"):
+                                continue
+                            mtime_ms = int(blob.updated.timestamp() * 1000) if getattr(blob, 'updated', None) else 0
+                            if os.getenv('GCS_SIGNED_URLS', 'true').lower() == 'true':
+                                from datetime import timedelta
+                                ttl = int(os.getenv('GCS_SIGNED_URL_TTL', '600'))
+                                url = blob.generate_signed_url(expiration=timedelta(seconds=ttl), version='v4', method='GET')
+                            else:
+                                url = f"https://storage.googleapis.com/{bucket_name}/{blob.name}"
+                            results.append({'camera_id': int(cam_s), 'date': d, 'filename': fname, 'url': url, 'mtime_ms': mtime_ms})
+                            items_for_cam += 1
+                        if items_for_cam > 0:
+                            day_found = True
+                if day_found:
+                    # We only want the latest non-empty date; stop scanning older days
+                    break
         else:
             base = images_dir  # from static mount
             for d in dates_to_check:
                 day_dir = os.path.join(base, d)
                 if not os.path.isdir(day_dir):
                     continue
+                day_found = False
                 cams = [str(camera_id)] if camera_id is not None else [name for name in os.listdir(day_dir) if os.path.isdir(os.path.join(day_dir, name))]
                 for cam in cams:
                     pid_dir = os.path.join(day_dir, cam, str(persistent_id))
@@ -1034,6 +1087,10 @@ async def list_crops(persistent_id: int, camera_id: int | None = None, date: str
                             'url': f"/images/{d}/{cam}/{persistent_id}/{fname}",
                             'mtime_ms': mtime_ms,
                         })
+                        day_found = True
+                if day_found:
+                    # Only use the latest non-empty date
+                    break
         # Sort newest first
         results.sort(key=lambda x: x['mtime_ms'], reverse=True)
         sliced = results[offset: offset + limit]

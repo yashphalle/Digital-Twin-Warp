@@ -134,9 +134,11 @@ class CameraTrackerThread(threading.Thread):
                             roi = frame[py1:py2, px1:px2].copy()
                             job['roi'] = roi
                             job['camera_id'] = self.camera_id
-                            self.crop_writer.enqueue(job)
-            except Exception:
-                pass
+                            ok = self.crop_writer.enqueue(job)
+                            if not ok:
+                                self.logger.warning(f"Crop enqueue failed for cam={self.camera_id} pid={det['persistent_id']}")
+            except Exception as e:
+                self.logger.warning(f"Crop path error cam={self.camera_id}: {e}")
 
             # push tracks
             try:

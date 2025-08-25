@@ -93,6 +93,7 @@ class MongoWriterThread(threading.Thread):
             self.logger.error("pymongo not available; DB writer disabled")
             return
         try:
+            self.logger.info(f"Connecting to Mongo: uri={self.atlas_uri} db={self.database_name} coll={self.collection_name}")
             self.client = MongoClient(self.atlas_uri, serverSelectionTimeoutMS=5000)
             self.client.server_info()
             db = self.client[self.database_name]
@@ -103,8 +104,8 @@ class MongoWriterThread(threading.Thread):
                 self.collection.create_index([("camera_id", 1), ("last_seen", -1)])
                 self.collection.create_index([("first_seen", -1)])
                 self.collection.create_index([("warp_id", 1)], sparse=True)
-            except Exception:
-                pass
+            except Exception as idx_e:
+                self.logger.warning(f"Index creation issue: {idx_e}")
             self.logger.info(f"Mongo connected: db={self.database_name} coll={self.collection_name}")
         except Exception as e:
             self.logger.error(f"Mongo connect failed: {e}")
@@ -303,6 +304,8 @@ class MongoWriterThread(threading.Thread):
                         except Exception:
                             pass
             self.logger.info(f"Flushed inserts={n_ins} updates={n_upd}")
+            if n_ins == 0 and n_upd == 0:
+                self.logger.debug(f"No DB writes this batch. pending_inserts={len(self._pending_inserts)} pending_updates={len(self._pending_updates)}")
         except Exception as e:
             self.logger.error(f"flush failed: {e}")
 
@@ -326,6 +329,7 @@ class MongoWriterThread(threading.Thread):
                                 gid = int(t.get('global_id'))
                                 bbox = t.get('bbox')
                                 if not bbox or len(bbox) != 4:
+                                    self.logger.debug(f"skip: invalid bbox for cam={cid} gid={gid}: {bbox}")
                                     continue
                                 corners_px = self._bbox_to_corners(bbox)
                                 center_px, area = self._center_area(bbox)
@@ -361,8 +365,8 @@ class MongoWriterThread(threading.Thread):
                                             color_fields = self._color_from_roi(cid, bbox)
                                             if color_fields:
                                                 doc.update(color_fields)
-                                        except Exception:
-                                            pass
+                                        except Exception as ce:
+                                            self.logger.debug(f"color extract failed for cam={cid} gid={gid}: {ce}")
                                         doc.update({
                                             'persistent_id': gid,
                                             'timestamp': now_pst,
