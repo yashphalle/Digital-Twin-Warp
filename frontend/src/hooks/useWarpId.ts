@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { WarpIdLinkRequest, WarpIdResponse, WarpIdSearchResponse, WarpIdListResponse } from '../types/tracking';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:8000');
+const API_BASE_URL = `${API_BASE}/api`;
 
 export const useWarpId = () => {
   const [loading, setLoading] = useState(false);

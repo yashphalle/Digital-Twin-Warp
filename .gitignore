@@ -48,3 +48,5 @@ Thumbs.db
 *.pt
 /secrets/
 /images/
+/deploy.txt
+

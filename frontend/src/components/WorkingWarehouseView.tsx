@@ -65,9 +65,11 @@ const WorkingWarehouseView: React.FC<WWVProps> = ({ externalSearchQuery, feedsEn
     cameras: { connected: 0, total: 0 }
   });
 
+  const API_BASE = (import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:8000');
+
   const fetchSystemStatus = async () => {
     try {
-      const res = await fetch('http://localhost:8000/');
+      const res = await fetch(`${API_BASE}/`);
       if (res.ok) {
         const d = await res.json();
         setSystemStatus(prev => ({
@@ -85,7 +87,7 @@ const WorkingWarehouseView: React.FC<WWVProps> = ({ externalSearchQuery, feedsEn
 
   const fetchCameraStatus = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/system/multi-camera/status');
+      const res = await fetch(`${API_BASE}/api/system/multi-camera/status`);
       if (res.ok) {
         const d = await res.json();
         const connected = (d.active_cameras || 0) + (d.ready_cameras || 0);
@@ -126,7 +128,7 @@ const WorkingWarehouseView: React.FC<WWVProps> = ({ externalSearchQuery, feedsEn
 
   const fetchObjects = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/tracking/objects');
+      const response = await fetch(`${API_BASE}/api/tracking/objects`);
       if (response.ok) {
         const data = await response.json();
         setObjects(data.objects || []);
